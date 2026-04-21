@@ -1,0 +1,259 @@
+/* Tokens compartidos → tokens.css */
+
+:root {
+  /* Bottom-nav-specific */
+  --c-active-pill: #f0f0f0;
+  --nav-h:         4.25rem;
+}
+
+body {
+  background: var(--c-bg);
+  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  min-height: 100dvh;
+}
+
+/* pagina */
+
+.page-content {
+  padding: 1.5rem 1rem;
+}
+
+.page-content h1 {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--c-text);
+  margin-bottom: 0.5rem;
+}
+
+.page-content p {
+  font-size: 0.9375rem;
+  color: var(--c-text-sub);
+  line-height: 1.6;
+}
+
+/* shell */
+
+.bottom-nav-shell {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+}
+
+/* backdrop */
+
+.sheet-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgba(0,0,0,0.24);
+  cursor: default;
+}
+
+.bottom-nav-shell:has(#more-toggle:checked) .sheet-backdrop {
+  display: block;
+}
+
+/* panel mas */
+
+.more-sheet {
+  overflow: hidden;
+  max-height: 0;
+  background: var(--c-bg);
+  border-radius: 1.25rem 1.25rem 0 0;
+  box-shadow: 0 -2px 20px rgba(0,0,0,0.08);
+  transition: max-height 0.3s ease;
+}
+
+.bottom-nav-shell:has(#more-toggle:checked) .more-sheet {
+  max-height: 28rem;
+}
+
+.more-sheet-inner {
+  padding: 1rem 1rem 0.75rem;
+}
+
+.more-sheet-handle {
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: 99px;
+  background: var(--c-border);
+  margin: 0 auto 1.125rem;
+}
+
+.more-sheet-label {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  margin-bottom: 0.75rem;
+}
+
+.more-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+}
+
+/* item del panel */
+
+.more-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  padding: 0.75rem 0.25rem;
+  border-radius: 1rem;
+  text-decoration: none;
+  color: var(--c-text-sub);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s;
+  min-height: 4.5rem;
+}
+
+.more-item:active {
+  background: var(--c-hover);
+}
+
+.more-item--danger {
+  color: var(--c-danger);
+}
+
+.more-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.875rem;
+  background: var(--c-hover);
+  flex-shrink: 0;
+}
+
+.more-item--danger .more-item-icon {
+  background: #fdf0ef;
+}
+
+.more-item-icon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* barra inferior */
+
+.bottom-nav {
+  height: var(--nav-h);
+  background: var(--c-bg);
+  border-top: 1px solid var(--c-border);
+  /* espacio seguro iOS notch */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.bottom-nav-list {
+  display: flex;
+  list-style: none;
+  height: 100%;
+  width: 100%;
+}
+
+/* cada <li> es el flex item que ocupa 1 fracción */
+.bottom-nav-list > li {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+/* item de la barra */
+
+.bottom-nav-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3125rem;
+  text-decoration: none;
+  color: var(--c-muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--ease);
+  /* touch target Apple HIG: mín 44px */
+  min-height: 2.75rem;
+}
+
+.bottom-nav-item--active {
+  color: var(--c-text);
+}
+
+.bottom-nav-shell:has(#more-toggle:checked) .bottom-nav-item--more {
+  color: var(--c-text);
+}
+
+/* icono con pill de activo (estilo Material You / iOS) */
+
+.bni-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 2rem;
+  border-radius: 99px;
+  transition: background var(--ease);
+}
+
+.bottom-nav-item--active .bni-icon {
+  background: var(--c-active-pill);
+}
+
+.bottom-nav-shell:has(#more-toggle:checked) .bottom-nav-item--more .bni-icon {
+  background: var(--c-active-pill);
+}
+
+.bni-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* etiqueta */
+
+.bni-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+  text-align: center;
+}
+
+.bottom-nav-item--active .bni-label,
+.bottom-nav-shell:has(#more-toggle:checked) .bottom-nav-item--more .bni-label {
+  font-weight: 700;
+  color: var(--c-text);
+}

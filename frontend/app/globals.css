@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/* ── Design Tokens ──────────────────────────────────────
+   Palette: white · gray scale · near-black. No other colors.
+   All components reference these variables — never hardcode.
+──────────────────────────────────────────────────────── */
+:root {
+  /* Palette */
+  --c-bg:         #fff;
+  --c-text:       #111;
+  --c-text-sub:   #555;
+  --c-muted:      #bbb;
+  --c-border:     #e0e0e0;
+  --c-hover:      #f5f5f5;
+  --c-line:       #efefef;
+  --c-danger:     #c0392b;
+  --c-active-pill:#f0f0f0;
+
+  /* Sidebar */
+  --sidebar-w:           min(13.75rem, calc(100vw - 2rem));
+  --sidebar-collapsed-w: min(4.25rem, calc(100vw - 2rem));
+  --c-tooltip-bg:        #1c1c1c;
+  --c-avatar-bg:         #e0e0e0;
+  --c-avatar-fg:         #999;
+
+  /* Bottom nav */
+  --nav-h: 4.25rem;
+
+  /* Motion */
+  --ease: 0.25s ease;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ── Dark theme ───────────────────────────────────────── */
+[data-theme="dark"] {
+  --c-bg:         #111;
+  --c-text:       #f0f0f0;
+  --c-text-sub:   #aaa;
+  --c-muted:      #555;
+  --c-border:     #2a2a2a;
+  --c-hover:      #1a1a1a;
+  --c-line:       #222;
+  --c-danger:     #e05252;
+  --c-active-pill:#222;
+  --c-tooltip-bg: #e0e0e0;
+  --c-avatar-bg:  #2a2a2a;
+  --c-avatar-fg:  #666;
+}
+
+/* ── Reduce motion ────────────────────────────────────── */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* ── Base ───────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-geist-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Accessibility ──────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

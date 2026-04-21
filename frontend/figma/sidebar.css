@@ -1,0 +1,401 @@
+/* Tokens compartidos → tokens.css */
+
+:root {
+  /* Sidebar-specific */
+  --sidebar-w:            min(13.75rem, calc(100vw - 2rem));
+  --sidebar-collapsed-w:  min(4.25rem, calc(100vw - 2rem));
+  --c-tooltip-bg:         #1c1c1c;
+  --c-avatar-bg:          #e0e0e0;
+  --c-avatar-fg:          #999;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* ─── Shell ─────────────────────────────────────────── */
+
+.sidebar-shell {
+  position: relative;
+  display: inline-flex;
+}
+
+/* ─── Toggle button ──────────────────────────────────── */
+
+.toggle-btn {
+  position: absolute;
+  top: calc(1rem + 1.25rem);
+  right: calc(1rem - 0.75rem);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.toggle-btn svg {
+  width: 0.625rem;
+  height: 0.625rem;
+  stroke: var(--c-muted);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--ease);
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .toggle-btn svg {
+  transform: scaleX(-1);
+}
+
+/* ─── Sidebar ────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  height: calc(100vh - 2rem);
+  margin: 1rem;
+  overflow: hidden;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 1.25rem;
+  transition: width var(--ease);
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .sidebar {
+  width: var(--sidebar-collapsed-w);
+}
+
+/* ─── User section ───────────────────────────────────── */
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-shrink: 0;
+  padding: 1.125rem 1rem 1rem;
+  transition: padding var(--ease);
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .user-section {
+  justify-content: center;
+  padding: 1.125rem 0 1rem;
+  gap: 0;
+}
+
+.avatar {
+  position: relative;
+  width: 2.375rem;
+  height: 2.375rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: 0 0 0 1.5px var(--c-border);
+}
+
+.avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar circle:first-child { fill: var(--c-avatar-bg); }
+.avatar circle:not(:first-child),
+.avatar path { fill: var(--c-avatar-fg); }
+
+.user-info {
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 8.75rem;
+  transition: max-width var(--ease), opacity 0.2s ease;
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .user-info {
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.user-role {
+  display: block;
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+
+.user-name {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--c-text);
+  margin-top: 0.0625rem;
+}
+
+/* ─── Nav scroll ─────────────────────────────────────── */
+
+.nav-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 0.5rem;
+  scrollbar-width: none;
+}
+
+.nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Section label ──────────────────────────────────── */
+
+.nav-label {
+  display: block;
+  flex-shrink: 0;
+  overflow: hidden;
+  max-height: 4em;
+  padding: 0.5rem 0.5rem 0.25rem;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  transition: max-height var(--ease), opacity var(--ease), padding var(--ease);
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .nav-label {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+}
+
+/* ─── Nav list ───────────────────────────────────────── */
+
+.nav-list {
+  list-style: none;
+  flex-shrink: 0;
+}
+
+/* ─── Nav item (shared: <a> and <summary>) ───────────── */
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5625rem 0.75rem;
+  border-radius: 0.625rem;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .nav-item {
+  padding: 0.5625rem 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.nav-item:hover {
+  background: var(--c-hover);
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+  color: var(--c-muted);
+}
+
+.nav-icon svg {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-text {
+  flex: 1;
+  font-size: 0.8125rem;
+  color: var(--c-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .nav-text {
+  display: none;
+}
+
+.nav-arrow {
+  flex-shrink: 0;
+  color: var(--c-muted);
+}
+
+.nav-arrow svg {
+  width: 0.6875rem;
+  height: 0.6875rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s;
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .nav-arrow {
+  display: none;
+}
+
+/* ─── Accordion (<details>/<summary>) ───────────────── */
+
+summary.nav-item {
+  list-style: none;
+}
+
+summary.nav-item::-webkit-details-marker {
+  display: none;
+}
+
+.nav-group[open] > summary .nav-icon { color: var(--c-text); }
+.nav-group[open] > summary .nav-text { color: var(--c-text); font-weight: 600; }
+.nav-group[open] > summary .nav-arrow svg { transform: rotate(180deg); }
+
+/* ─── Submenu ────────────────────────────────────────── */
+
+/* display:block overrides the UA hidden rule so max-height can animate */
+.submenu {
+  display: block !important;
+  list-style: none;
+  overflow: hidden;
+  max-height: 0;
+  margin-left: 1.3125rem;
+  transition: max-height 0.25s ease;
+}
+
+.submenu > li {
+  position: relative;
+  padding-top: 0.0625rem;
+  padding-bottom: 0.0625rem;
+}
+
+/* Vertical bar — full height except last item stops at midpoint */
+.submenu > li::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--c-line);
+}
+
+.submenu > li:last-child::before {
+  bottom: 50%;
+  width: 0.75rem;
+  border-bottom: 1.5px solid var(--c-line);
+  border-bottom-left-radius: 0.375rem;
+}
+
+/* Horizontal tick at midpoint — all items except last (last-child handles it in ::before) */
+.submenu > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0.75rem;
+  border-bottom: 1.5px solid var(--c-line);
+}
+
+.nav-group[open] > .submenu {
+  max-height: 12.5rem;
+}
+
+.sidebar-shell:has(#nav-toggle:checked) .submenu {
+  display: none !important;
+}
+
+.sub-item {
+  display: block;
+  padding: 0.375rem 0.75rem 0.375rem 0.5rem;
+  margin: 0 0.25rem 0 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.78125rem;
+  color: var(--c-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sub-item:hover {
+  background: var(--c-hover);
+  color: var(--c-text-sub);
+}
+
+.sub-item--active {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+/* ─── Divider ────────────────────────────────────────── */
+
+.divider {
+  height: 1px;
+  border: none;
+  flex-shrink: 0;
+  margin: 0.375rem 0.5rem;
+  background: var(--c-line);
+}
+
+/* ─── Bottom section ─────────────────────────────────── */
+
+.sidebar-bottom {
+  flex-shrink: 0;
+  padding: 0 0.5rem 0.5rem;
+}
+
+/* ─── Danger variant ─────────────────────────────────── */
+
+.nav-item--danger .nav-icon { color: var(--c-danger); }
+.nav-item--danger .nav-text { color: var(--c-danger); }
+.nav-item--danger:hover { background: var(--c-hover); }
+
+/* ─── Tooltips (collapsed only) ──────────────────────── */
+
+.sidebar-shell:has(#nav-toggle:checked) .sidebar [data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 0.625rem);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  padding: 0.3125rem 0.625rem;
+  border-radius: 0.4375rem;
+  background: var(--c-tooltip-bg);
+  color: var(--c-bg);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  pointer-events: none;
+}

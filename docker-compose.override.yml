@@ -1,0 +1,16 @@
+# Development overrides — auto-merged by docker-compose
+# Mounts source code as volume so code changes don't require a full image rebuild.
+# Usage:
+#   First time (or after npm install changes):
+#     docker-compose up --build backend -d
+#   After any code change:
+#     docker-compose restart backend
+#   (nest --watch recompiles automatically inside the container)
+services:
+  backend:
+    command: npm run start:dev
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - ./backend/tsconfig.build.json:/app/tsconfig.build.json
+      - ./backend/nest-cli.json:/app/nest-cli.json

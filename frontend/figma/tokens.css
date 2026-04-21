@@ -1,0 +1,49 @@
+/* ─── Design tokens compartidos ──────────────────────────
+   Cargado antes que cualquier CSS de componente.
+   sidebar.html y bottom-nav.html enlazan este archivo primero.
+──────────────────────────────────────────────────────── */
+
+:root {
+  /* Paleta: blanco · escala de grises · casi negro */
+  --c-bg:         #fff;
+  --c-text:       #111;
+  --c-text-sub:   #555;
+  --c-muted:      #bbb;
+  --c-border:     #e0e0e0;
+  --c-hover:      #f5f5f5;
+  --c-line:       #efefef;
+  --c-danger:     #c0392b;
+
+  /* Movimiento */
+  --ease: 0.25s ease;
+}
+
+/* ─── Reset ──────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Base ───────────────────────────────────────────── */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─── Accesibilidad ──────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

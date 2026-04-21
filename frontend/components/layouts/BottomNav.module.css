@@ -1,0 +1,220 @@
+/* ── BottomNav.module.css ───────────────────────────────
+   Mobile-only bottom navigation bar.
+   Hidden on md+ screens via the parent wrapper (Tailwind md:hidden).
+──────────────────────────────────────────────────────── */
+
+/* Shell — fixed at bottom, stacks sheet + bar */
+.shell {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+}
+
+/* Backdrop (tap to close sheet) */
+.backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgba(0, 0, 0, 0.24);
+  cursor: default;
+}
+
+.backdropVisible {
+  display: block;
+}
+
+/* ── "More" sheet ──────────────────────────────────── */
+.sheet {
+  overflow: hidden;
+  max-height: 0;
+  background: var(--c-bg);
+  border-radius: 1.25rem 1.25rem 0 0;
+  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.08);
+  transition: max-height 0.3s ease;
+}
+
+.sheetOpen {
+  max-height: 28rem;
+}
+
+.sheetInner {
+  padding: 1rem 1rem 0.75rem;
+}
+
+.sheetHandle {
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: 99px;
+  background: var(--c-border);
+  margin: 0 auto 1.125rem;
+}
+
+.sheetLabel {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  margin-bottom: 0.75rem;
+}
+
+.moreList {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+  padding: 0;
+  margin: 0;
+}
+
+.moreItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  padding: 0.75rem 0.25rem;
+  border-radius: 1rem;
+  text-decoration: none;
+  color: var(--c-text-sub);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s;
+  min-height: 4.5rem;
+}
+
+.moreItem:active {
+  background: var(--c-hover);
+}
+
+.moreItemDanger {
+  color: var(--c-danger);
+}
+
+.moreItemIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.875rem;
+  background: var(--c-hover);
+  flex-shrink: 0;
+}
+
+.moreItemDanger .moreItemIcon {
+  background: #fdf0ef;
+}
+
+.moreItemIcon svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Bottom bar ────────────────────────────────────── */
+.bar {
+  height: var(--nav-h);
+  background: var(--c-bg);
+  border-top: 1px solid var(--c-border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.barList {
+  display: flex;
+  list-style: none;
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+.barList > li {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+/* Each nav item */
+.item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3125rem;
+  text-decoration: none;
+  color: var(--c-muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--ease);
+  min-height: 2.75rem;
+}
+
+.itemActive {
+  color: var(--c-text);
+}
+
+.itemMoreOpen {
+  color: var(--c-text);
+}
+
+/* Icon pill */
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 2rem;
+  border-radius: 99px;
+  transition: background var(--ease);
+}
+
+.itemActive .icon,
+.itemMoreOpen .icon {
+  background: var(--c-active-pill);
+}
+
+.icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Label */
+.label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+  text-align: center;
+}
+
+.itemActive .label,
+.itemMoreOpen .label {
+  font-weight: 700;
+  color: var(--c-text);
+}
