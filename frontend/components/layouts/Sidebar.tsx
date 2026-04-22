@@ -264,6 +264,7 @@ export default function Sidebar({
 }: Omit<SidebarProps, 'user'>) {
   const [collapsed, setCollapsed] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(new Set());
   const [unreadCount, setUnreadCount] = useState(0);
   const pathname = usePathname();
   const dispatch = useUIDispatch();
@@ -476,71 +477,105 @@ export default function Sidebar({
                     )}
                   </div>
                   <ul className={s.navList}>
-                    {workspaces.map((ws) => (
+                    {workspaces.map((ws) => {
+                      const wsCollapsed = collapsedWorkspaces.has(ws.id);
+                      function toggleWs() {
+                        setCollapsedWorkspaces((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(ws.id)) next.delete(ws.id);
+                          else next.add(ws.id);
+                          return next;
+                        });
+                      }
+                      return (
                       <li key={ws.id}>
-                        {/* Workspace label */}
-                        {!collapsed && ws.projects.length > 0 && (
-                          <div className="flex items-center gap-2 px-3 pt-2 pb-0.5" aria-hidden="true">
+                        {/* Workspace header — always visible, clickable to collapse */}
+                        {!collapsed && (
+                          <button
+                            type="button"
+                            onClick={toggleWs}
+                            className="flex items-center gap-2 px-3 pt-2 pb-0.5 w-full text-left cursor-pointer bg-transparent border-none group"
+                            aria-expanded={!wsCollapsed}
+                          >
                             <WsIcon icon={ws.icon ?? 'layers'} size={11} color={ws.color} />
-                            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-muted)] truncate">
+                            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-muted)] truncate flex-1 group-hover:text-[var(--c-text-sub)] transition-colors">
                               {ws.name}
                             </span>
-                          </div>
+                            <svg
+                              viewBox="0 0 10 10" width="8" height="8"
+                              fill="none" stroke="currentColor" strokeWidth="1.5"
+                              aria-hidden="true"
+                              className="text-[var(--c-muted)] shrink-0 transition-transform duration-200"
+                              style={{ transform: wsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+                            >
+                              <path d="M2 3.5l3 3 3-3" />
+                            </svg>
+                          </button>
                         )}
-                        <ul className={s.navList}>
-                          {ws.projects.map((proj) => {
-                            const slug = proj.code.toLowerCase();
-                            const basePath = `/proyectos/${slug}`;
-                            return (
-                              <li key={proj.id}>
-                                <details className={s.navGroup}>
-                                  <summary
-                                    className={cx(
-                                      s.navItem,
-                                      collapsed && s.navItemCollapsed,
-                                      cx(s.tooltip, collapsed && s.tooltipVisible),
-                                    )}
-                                    data-tip={proj.name}
-                                  >
-                                    <span className={s.navIcon}>
-                                      <svg viewBox="0 0 24 24" fill="none"
-                                           stroke={ws.color ?? 'currentColor'}
-                                           strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                                           width={14} height={14} aria-hidden="true">
-                                        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-                                      </svg>
-                                    </span>
-                                    <span className={cx(s.navText, collapsed && s.navTextHidden)}>
-                                      <span className={s.projectCode}>{proj.code}</span>
-                                      {proj.name}
-                                    </span>
-                                    <span className={cx(s.navArrow, collapsed && s.navArrowHidden)}>
-                                      <ArrowSvg />
-                                    </span>
-                                  </summary>
-                                  <ul className={cx(s.submenu, collapsed && s.submenuCollapsed)}>
-                                    {projectSubitems(proj.methodology, proj.extra_views ?? []).map(({ label, suffix }) => {
-                                      const href = `${basePath}/${suffix}`;
-                                      return (
-                                        <li key={suffix} className={s.submenuItem}>
-                                          <Link
-                                            href={href}
-                                            className={cx(s.subItem, pathname === href && s.subItemActive)}
-                                            aria-current={pathname === href ? 'page' : undefined}
-                                          >
-                                            {label}
-                                          </Link>
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                </details>
+                        {!wsCollapsed && (
+                          <ul className={s.navList}>
+                            {ws.projects.length === 0 && !collapsed && (
+                              <li>
+                                <span className="px-3 py-1.5 text-[11px] text-[var(--c-muted)] block">
+                                  Sin proyectos
+                                </span>
                               </li>
-                            );
-                          })}
-                        </ul>
+                            )}
+                            {ws.projects.map((proj) => {
+                              const slug = proj.code.toLowerCase();
+                              const basePath = `/proyectos/${slug}`;
+                              return (
+                                <li key={proj.id}>
+                                  <details className={s.navGroup}>
+                                    <summary
+                                      className={cx(
+                                        s.navItem,
+                                        collapsed && s.navItemCollapsed,
+                                        cx(s.tooltip, collapsed && s.tooltipVisible),
+                                      )}
+                                      data-tip={proj.name}
+                                    >
+                                      <span className={s.navIcon}>
+                                        <svg viewBox="0 0 24 24" fill="none"
+                                             stroke={ws.color ?? 'currentColor'}
+                                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                                             width={14} height={14} aria-hidden="true">
+                                          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+                                        </svg>
+                                      </span>
+                                      <span className={cx(s.navText, collapsed && s.navTextHidden)}>
+                                        <span className={s.projectCode}>{proj.code}</span>
+                                        {proj.name}
+                                      </span>
+                                      <span className={cx(s.navArrow, collapsed && s.navArrowHidden)}>
+                                        <ArrowSvg />
+                                      </span>
+                                    </summary>
+                                    <ul className={cx(s.submenu, collapsed && s.submenuCollapsed)}>
+                                      {projectSubitems(proj.methodology, proj.extra_views ?? []).map(({ label, suffix }) => {
+                                        const href = `${basePath}/${suffix}`;
+                                        return (
+                                          <li key={suffix} className={s.submenuItem}>
+                                            <Link
+                                              href={href}
+                                              className={cx(s.subItem, pathname === href && s.subItemActive)}
+                                              aria-current={pathname === href ? 'page' : undefined}
+                                            >
+                                              {label}
+                                            </Link>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </details>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
                       </li>
-                    ))}
+                      );
+                    })}
                     {!collapsed && (
                       <li>
                         <button

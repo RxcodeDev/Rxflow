@@ -9,7 +9,7 @@ import Input from '@/components/ui/Input';
 import { useUIState, useUIDispatch } from '@/store/UIContext';
 import { closeCreateModal, bumpProjects } from '@/store/slices/uiSlice';
 import { apiGet, apiPost } from '@/lib/api';
-import type { ProjectSummary, MemberItem, TaskItem, ApiWrapped } from '@/types/api.types';
+import type { ProjectSummary, MemberItem, TaskItem, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
 import { playSuccess, SOUND_DURATION_MS } from '@/hooks/useSound';
 
 /* ── Local types ─────────────────────────────────────── */
@@ -539,8 +539,16 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
   const [identifier, setIdentifier] = useState('');
   const [description, setDescription] = useState('');
   const [methodology, setMethodology] = useState<Methodology>('Scrum');
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  useEffect(() => {
+    apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
+      .then((r) => setWorkspaces(r.data))
+      .catch(() => { /* non-blocking */ });
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -555,12 +563,15 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
     setSubmitting(true);
     setSubmitError('');
     try {
-      await apiPost('/projects', {
+      const res = await apiPost<ApiWrapped<{ id: string }>>('/projects', {
         name: name.trim(),
         code: identifier,
         description: description.trim() || undefined,
         methodology: METHODOLOGY_MAP[methodology],
       });
+      if (workspaceId && res.data?.id) {
+        await apiPost(`/workspaces/${workspaceId}/projects`, { projectId: res.data.id });
+      }
       dispatch(bumpProjects());
       playSuccess();
       onClose();
@@ -631,6 +642,30 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
         onChange={(v) => setMethodology(v)}
         hint="Puedes cambiarlo después en configuración"
       />
+
+      {/* Espacio de trabajo */}
+      {workspaces.length > 0 && (
+        <Field label="Espacio de trabajo" htmlFor="cp-ws">
+          <div className="relative">
+            <select
+              id="cp-ws"
+              value={workspaceId}
+              onChange={(e) => setWorkspaceId(e.target.value)}
+              className={`${baseCls} pr-8 appearance-none cursor-pointer`}
+            >
+              <option value="">Sin espacio de trabajo</option>
+              {workspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>{ws.name}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M2 4l4 4 4-4" />
+              </svg>
+            </span>
+          </div>
+        </Field>
+      )}
 
       {submitError && <p className="text-[0.75rem] text-[var(--c-danger)]">{submitError}</p>}
 

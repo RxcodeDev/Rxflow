@@ -4,10 +4,10 @@ import { useState, useEffect, type FormEvent } from 'react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { apiPatch } from '@/lib/api';
+import { apiPatch, apiGet, apiPost, apiDelete } from '@/lib/api';
 import { useUIDispatch } from '@/store/UIContext';
 import { bumpProjects } from '@/store/slices/uiSlice';
-import type { ProjectSummary, ApiWrapped } from '@/types/api.types';
+import type { ProjectSummary, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
 
 /* ── Constants ───────────────────────────────────────── */
 const METHODOLOGIES = ['Scrum', 'Kanban', 'Shape Up'] as const;
@@ -91,8 +91,17 @@ export default function EditProjectModal({ project, onClose, onSaved }: EditProj
   const [methodology, setMethodology] = useState<Methodology>('Kanban');
   const [status,      setStatus]      = useState('activo');
   const [extraViews,  setExtraViews]  = useState<string[]>([]);
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaces,  setWorkspaces]  = useState<WorkspaceSummary[]>([]);
   const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  /* Fetch workspaces once */
+  useEffect(() => {
+    apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
+      .then((r) => setWorkspaces(r.data))
+      .catch(() => { /* non-blocking */ });
+  }, []);
 
   /* Seed form from project when it opens */
   useEffect(() => {
@@ -105,6 +114,13 @@ export default function EditProjectModal({ project, onClose, onSaved }: EditProj
     setExtraViews(project.extra_views ?? []);
     setSubmitError('');
   }, [project]);
+
+  /* Sync workspace selection when workspaces or project changes */
+  useEffect(() => {
+    if (!project || workspaces.length === 0) return;
+    const current = workspaces.find((ws) => ws.projects.some((p) => p.id === project.id));
+    setWorkspaceId(current?.id ?? '');
+  }, [project, workspaces]);
 
   const methodologyKey = METHODOLOGY_MAP[methodology];
   const defaultViews   = METHODOLOGY_DEFAULTS[methodologyKey] ?? [];
@@ -129,6 +145,19 @@ export default function EditProjectModal({ project, onClose, onSaved }: EditProj
         status,
         extra_views: getExtraViews(methodologyKey, extraViews),
       });
+
+      // Manage workspace assignment
+      const prevWs = workspaces.find((ws) => ws.projects.some((p) => p.id === project.id));
+      const prevWsId = prevWs?.id ?? '';
+      if (workspaceId !== prevWsId) {
+        if (prevWsId) {
+          await apiDelete(`/workspaces/${prevWsId}/projects/${project.id}`);
+        }
+        if (workspaceId) {
+          await apiPost(`/workspaces/${workspaceId}/projects`, { projectId: project.id });
+        }
+      }
+
       onSaved(res.data);
       dispatch(bumpProjects());
       onClose();
@@ -216,6 +245,30 @@ export default function EditProjectModal({ project, onClose, onSaved }: EditProj
             </span>
           </div>
         </Field>
+
+        {/* Espacio de trabajo */}
+        {workspaces.length > 0 && (
+          <Field label="Espacio de trabajo" htmlFor="ep-ws">
+            <div className="relative">
+              <select
+                id="ep-ws"
+                value={workspaceId}
+                onChange={(e) => setWorkspaceId(e.target.value)}
+                className={`${baseCls} pr-8 appearance-none cursor-pointer`}
+              >
+                <option value="">Sin espacio de trabajo</option>
+                {workspaces.map((ws) => (
+                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M2 4l4 4 4-4" />
+                </svg>
+              </span>
+            </div>
+          </Field>
+        )}
 
         {/* Vistas disponibles */}
         <Field label="Vistas habilitadas">

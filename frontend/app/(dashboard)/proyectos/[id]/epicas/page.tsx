@@ -16,7 +16,7 @@ import { STATUS_LABEL as TASK_STATUS_LABEL, PRIORITY_STYLE } from '@/components/
 
 /* ── Helpers ─────────────────────────────────────────── */
 function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`bg-[var(--c-hover)] rounded animate-pulse ${className}`} />;
+  return <span className={`bg-[var(--c-hover)] rounded animate-pulse ${className}`} />;
 }
 
 const EPIC_STATUS_LABEL: Record<string, string> = {
