@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { getPool } from '../../config/database.config';
 import type { TaskItem } from './entities/task.entity';
+import { NotificationsRepository } from '../notifications/notifications.repository';
 
 @Injectable()
 export class TasksRepository {
+  constructor(private readonly notificationsRepo: NotificationsRepository) {}
+
   private get pool() {
     return getPool();
   }
@@ -257,7 +260,6 @@ export class TasksRepository {
     taskId: string,
     authorId: string,
     body: string,
-    notificationsRepo?: import('../notifications/notifications.repository').NotificationsRepository,
   ) {
     const { rows: [comment] } = await this.pool.query(
       `INSERT INTO comments (task_id, author_id, body)
@@ -272,22 +274,24 @@ export class TasksRepository {
     );
 
     /* ── Mention notifications ──────────────────────── */
-    if (notificationsRepo) {
-      const mentions = [...body.matchAll(/@([\w\s]+?)(?=\s|@|$)/g)].map((m) => m[1].trim());
-      const uniqueNames = [...new Set(mentions)].filter(Boolean);
-      for (const name of uniqueNames) {
-        const { rows: [mentioned] } = await this.pool.query(
-          `SELECT id FROM users WHERE LOWER(name) = LOWER($1) AND id != $2 LIMIT 1`,
-          [name, authorId],
-        );
-        if (mentioned) {
-          await notificationsRepo.createMentionNotification({
-            recipientId: mentioned.id,
-            senderId:    authorId,
-            taskId,
-            message:     `te mencionó en un comentario`,
-          });
-        }
+    const { rows: allUsers } = await this.pool.query(
+      `SELECT id, name FROM users WHERE id != $1 AND is_active = true`,
+      [authorId],
+    );
+    const sortedUsers = allUsers.sort((a: { name: string }, b: { name: string }) => b.name.length - a.name.length);
+    const notified = new Set<string>();
+    for (const u of sortedUsers) {
+      if (notified.has(u.id)) continue;
+      const escaped = u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`@${escaped}(?:\\s|@|$)`, 'i');
+      if (pattern.test(body)) {
+        notified.add(u.id);
+        await this.notificationsRepo.createMentionNotification({
+          recipientId: u.id,
+          senderId:    authorId,
+          taskId,
+          message:     `te mencionó: "${body.length > 60 ? body.slice(0, 60) + '…' : body}"`,
+        });
       }
     }
 
@@ -311,7 +315,9 @@ export class TasksRepository {
         t.due_date, t.blocked_reason, t.created_at,
         t.assignee_id,
         u_a.initials AS assignee_initials, u_a.name AS assignee_name,
+        u_a.avatar_url AS assignee_avatar_url, u_a.avatar_color AS assignee_avatar_color,
         u_c.initials AS creator_initials,  u_c.name AS creator_name,
+        u_c.avatar_url AS creator_avatar_url, u_c.avatar_color AS creator_avatar_color,
         p.code AS project_code, p.name AS project_name,
         t.epic_id, e.name AS epic_name,
         t.cycle_id
@@ -335,7 +341,7 @@ export class TasksRepository {
     `, [id]);
 
     const { rows: comments } = await this.pool.query(`
-      SELECT c.id, c.body, c.created_at, u.initials, u.name
+      SELECT c.id, c.body, c.created_at, u.initials, u.name, u.avatar_url, u.avatar_color
       FROM comments c
       JOIN users u ON u.id = c.author_id
       WHERE c.task_id = $1
@@ -343,7 +349,7 @@ export class TasksRepository {
     `, [id]);
 
     const { rows: activity } = await this.pool.query(`
-      SELECT al.id, al.action, al.created_at, u.initials, u.name
+      SELECT al.id, al.action, al.created_at, u.initials, u.name, u.avatar_url, u.avatar_color
       FROM activity_log al
       JOIN users u ON u.id = al.user_id
       WHERE al.task_id = $1

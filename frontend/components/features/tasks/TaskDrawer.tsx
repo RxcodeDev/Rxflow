@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import s from './TaskDrawer.module.css';
 import { useUIState, useUIDispatch } from '@/store/UIContext';
-import { closeDrawer, openCreateModal, bumpTasks } from '@/store/slices/uiSlice';
+import { closeDrawer, bumpTasks } from '@/store/slices/uiSlice';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { MemberItem, ApiWrapped } from '@/types/api.types';
 
@@ -21,24 +22,43 @@ interface TaskDetail {
   assignee_id: string | null;
   assignee_initials: string | null;
   assignee_name: string | null;
+  assignee_avatar_url: string | null;
+  assignee_avatar_color: string | null;
   creator_initials: string;
   creator_name: string;
+  creator_avatar_url: string | null;
+  creator_avatar_color: string | null;
   project_code: string;
   project_name: string;
   epic_id: string | null;
   epic_name: string | null;
   cycle_id: string | null;
   subtasks: { id: string; identifier: string; title: string; status: string }[];
-  comments: { id: string; body: string; created_at: string; initials: string; name: string }[];
-  activity: { id: string; action: string; created_at: string; initials: string; name: string }[];
+  comments: { id: string; body: string; created_at: string; initials: string; name: string; avatar_url: string | null; avatar_color: string | null }[];
+  activity: { id: string; action: string; created_at: string; initials: string; name: string; avatar_url: string | null; avatar_color: string | null }[];
 }
 
 type EpicOpt = { id: string; name: string };
+type UserOpt = { id: string; name: string; initials: string; avatarUrl: string | null; avatarColor: string | null };
 
-type UserOpt = { id: string; name: string; initials: string };
+/* ── Status & priority meta ──────────────────────────── */
+export const STATUS_META: Record<string, { label: string; color: string }> = {
+  backlog:     { label: 'Backlog',      color: '#94a3b8' },
+  en_progreso: { label: 'En progreso',  color: '#3b82f6' },
+  en_revision: { label: 'En revisión',  color: '#f59e0b' },
+  bloqueado:   { label: 'Bloqueado',    color: '#ef4444' },
+  completada:  { label: 'Completada',   color: '#22c55e' },
+};
+
+export const PRIO_META: Record<string, { label: string; color: string }> = {
+  urgente: { label: 'Urgente', color: '#ef4444' },
+  alta:    { label: 'Alta',    color: '#f97316' },
+  media:   { label: 'Media',   color: '#f59e0b' },
+  baja:    { label: 'Baja',    color: '#22c55e' },
+};
 
 /* ── Helpers ─────────────────────────────────────────── */
-function timeAgo(iso: string): string {
+export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins  = Math.floor(diff / 60000);
   if (mins < 1)  return 'ahora';
@@ -50,45 +70,316 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('es', { day: 'numeric', month: 'short' });
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  backlog: 'Backlog', en_progreso: 'En progreso',
-  en_revision: 'En revisión', bloqueado: 'Bloqueado', completada: 'Completada',
-};
+const AVATAR_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#0ea5e9','#14b8a6','#10b981','#f59e0b'];
+function avatarBg(initials: string): string {
+  const i = ((initials.charCodeAt(0) ?? 0) + (initials.charCodeAt(1) ?? 0)) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[i];
+}
 
-const PRIO_LABELS: Record<string, string> = {
-  urgente: 'Urgente', alta: 'Alta', media: 'Media', baja: 'Baja',
-};
-
-/* ── Sub-components ──────────────────────────────────── */
-function Avatar({ initials, large }: { initials: string; large?: boolean }) {
+/* ── Avatar ─────────────────────────────────────────── */
+export function DrawerAvatar({
+  initials, size = 24, avatarUrl, avatarColor,
+}: {
+  initials: string;
+  size?: number;
+  avatarUrl?: string | null;
+  avatarColor?: string | null;
+}) {
+  const bg = avatarColor ?? avatarBg(initials);
   return (
-    <div className={`${s.avatar} ${large ? s.avatar32 : ''}`} aria-hidden="true">
-      {initials}
+    <div
+      aria-hidden="true"
+      style={{
+        width: size, height: size, borderRadius: '50%',
+        background: avatarUrl ? undefined : bg,
+        color: '#fff',
+        fontSize: size <= 24 ? 9 : 11, fontWeight: 600,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, userSelect: 'none', overflow: 'hidden',
+      }}
+    >
+      {avatarUrl
+        ? <img src={avatarUrl} alt={initials} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : initials
+      }
     </div>
   );
 }
 
-function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className={s.metaRow}>
-      <span className={s.metaLabel}>{label}</span>
-      <div className={s.metaValue}>{children}</div>
-    </div>
-  );
+/* ── Mirror HTML for @mention highlighting ──────────── */
+function buildMirrorHtml(text: string, knownNames: string[] = []): string {
+  const safe = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+
+  let pattern: RegExp;
+  if (knownNames.length > 0) {
+    // Sort longest first so "Michelle Ramirez" matches before "Michelle"
+    const escaped = [...knownNames]
+      .sort((a, b) => b.length - a.length)
+      .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    pattern = new RegExp(`@(${escaped.join('|')})`, 'g');
+  } else {
+    pattern = /@\S+/g;
+  }
+  return safe.replace(pattern, '<span style="color:#22c55e;font-weight:500">$&</span>') + '\u00a0';
 }
 
-function Skel({ w, h = 16 }: { w: number | string; h?: number }) {
+/* ── Skeleton ───────────────────────────────────────── */
+function Skel({ w, h = 14 }: { w: number | string; h?: number }) {
   return (
     <div
       className="bg-[var(--c-hover)] rounded animate-pulse"
-      style={{ width: typeof w === 'number' ? w : w, height: h }}
+      style={{ width: typeof w === 'number' ? `${w}px` : w, height: h, flexShrink: 0 }}
     />
+  );
+}
+
+/* ── StatusPill ─────────────────────────────────────── */
+export function StatusPill({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState({ top: 0, left: 0, width: 0 });
+  const btnRef  = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const meta = STATUS_META[value] ?? STATUS_META.backlog;
+
+  useEffect(() => {
+    if (!open) return;
+    function h(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node))
+        setOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  function handleOpen(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen((v) => !v);
+  }
+
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={handleOpen} className={s.propPill}>
+        <span className={s.propDot} style={{ background: meta.color }} aria-hidden="true" />
+        {meta.label}
+        <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <path d="M2 3.5l3 3 3-3" />
+        </svg>
+      </button>
+      {open && (
+        <div ref={menuRef} className={s.propMenu} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}>
+          {Object.entries(STATUS_META).map(([k, v]) => (
+            <button key={k} type="button"
+              className={`${s.propMenuItem} ${k === value ? s.propMenuItemActive : ''}`}
+              onClick={() => { setOpen(false); onChange(k); }}>
+              <span className={s.propDot} style={{ background: v.color }} aria-hidden="true" />
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── PriorityPill ───────────────────────────────────── */
+export function PriorityPill({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState({ top: 0, left: 0, width: 0 });
+  const btnRef  = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const meta = PRIO_META[value] ?? PRIO_META.media;
+
+  useEffect(() => {
+    if (!open) return;
+    function h(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node))
+        setOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  function handleOpen(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen((v) => !v);
+  }
+
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={handleOpen} className={s.propPill}>
+        <span style={{ color: meta.color, fontSize: '0.5rem', lineHeight: 1 }} aria-hidden="true">▲</span>
+        {meta.label}
+        <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <path d="M2 3.5l3 3 3-3" />
+        </svg>
+      </button>
+      {open && (
+        <div ref={menuRef} className={s.propMenu} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}>
+          {Object.entries(PRIO_META).map(([k, v]) => (
+            <button key={k} type="button"
+              className={`${s.propMenuItem} ${k === value ? s.propMenuItemActive : ''}`}
+              onClick={() => { setOpen(false); onChange(k); }}>
+              <span style={{ color: v.color, fontSize: '0.5rem' }} aria-hidden="true">▲</span>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── AssigneePill ───────────────────────────────────── */
+export function AssigneePill({
+  assigneeId, assigneeName, assigneeInitials, assigneeAvatarUrl, assigneeAvatarColor, users, onChange,
+}: {
+  assigneeId: string | null;
+  assigneeName: string | null;
+  assigneeInitials: string | null;
+  assigneeAvatarUrl?: string | null;
+  assigneeAvatarColor?: string | null;
+  users: UserOpt[];
+  onChange: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState({ top: 0, left: 0, width: 0 });
+  const btnRef  = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function h(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node))
+        setOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  function handleOpen(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen((v) => !v);
+  }
+
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={handleOpen} className={s.propPill}>
+        {assigneeInitials
+          ? <DrawerAvatar initials={assigneeInitials} avatarUrl={assigneeAvatarUrl} avatarColor={assigneeAvatarColor} size={18} />
+          : <span className={s.propDot} style={{ background: 'var(--c-border)' }} aria-hidden="true" />
+        }
+        <span className={s.propPillText}>{assigneeName ?? 'Sin asignar'}</span>
+        <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <path d="M2 3.5l3 3 3-3" />
+        </svg>
+      </button>
+      {open && (
+        <div ref={menuRef} className={s.propMenu} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}>
+          <button type="button"
+            className={`${s.propMenuItem} ${!assigneeId ? s.propMenuItemActive : ''}`}
+            onClick={() => { setOpen(false); onChange(null); }}>
+            <span className={s.propDot} style={{ background: 'var(--c-muted)' }} aria-hidden="true" />
+            Sin asignar
+          </button>
+          {users.map((u) => (
+            <button key={u.id} type="button"
+              className={`${s.propMenuItem} ${u.id === assigneeId ? s.propMenuItemActive : ''}`}
+              onClick={() => { setOpen(false); onChange(u.id); }}>
+              <DrawerAvatar initials={u.initials} avatarUrl={u.avatarUrl} avatarColor={u.avatarColor} size={20} />
+              {u.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── EpicPill ───────────────────────────────────────── */
+export function EpicPill({
+  value, epics, onChange,
+}: {
+  value: string | null;
+  epics: { id: string; name: string }[];
+  onChange: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState({ top: 0, left: 0, width: 0 });
+  const btnRef  = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const current = epics.find((e) => e.id === value);
+
+  useEffect(() => {
+    if (!open) return;
+    function h(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node))
+        setOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  function handleOpen(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen((v) => !v);
+  }
+
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={handleOpen} className={s.propPill}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+        <span className={s.propPillText}>{current?.name ?? 'Sin épica'}</span>
+        <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <path d="M2 3.5l3 3 3-3" />
+        </svg>
+      </button>
+      {open && (
+        <div ref={menuRef} className={s.propMenu} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}>
+          <button type="button"
+            className={`${s.propMenuItem} ${!value ? s.propMenuItemActive : ''}`}
+            onClick={() => { setOpen(false); onChange(null); }}>
+            Sin épica
+          </button>
+          {epics.map((ep) => (
+            <button key={ep.id} type="button"
+              className={`${s.propMenuItem} ${ep.id === value ? s.propMenuItemActive : ''}`}
+              onClick={() => { setOpen(false); onChange(ep.id); }}>
+              {ep.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
 /* ── Main export ─────────────────────────────────────── */
 export default function TaskDrawer() {
-  const { isDrawerOpen, activeTaskId } = useUIState();
+  const router = useRouter();
+  const { isDrawerOpen, activeTaskId, tasksVersion } = useUIState();
   const dispatch = useUIDispatch();
   const [task,      setTask]      = useState<TaskDetail | null>(null);
   const [loading,   setLoading]   = useState(false);
@@ -103,34 +394,43 @@ export default function TaskDrawer() {
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIdx,   setMentionIdx]   = useState(0);
   const [mentionStart, setMentionStart] = useState(0);
-  const drawerRef  = useRef<HTMLDivElement>(null);
+  const drawerRef   = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastFetchId = useRef<string | null>(null);
 
   /* Fetch user list once */
   useEffect(() => {
     apiGet<ApiWrapped<MemberItem[]>>('/users')
-      .then((r) => setUsers(r.data.map((u) => ({ id: u.id, name: u.name, initials: u.initials }))))
+      .then((r) => setUsers(r.data.map((u) => ({ id: u.id, name: u.name, initials: u.initials, avatarUrl: u.avatar_url, avatarColor: u.avatar_color }))))
       .catch(console.error);
   }, []);
 
-  /* Fetch task when drawer opens */
+  /* Fetch task when drawer opens or tasksVersion bumps */
   useEffect(() => {
-    if (!isDrawerOpen || !activeTaskId) { setTask(null); setEpics([]); return; }
-    setLoading(true);
-    setTab('comments');
+    if (!isDrawerOpen || !activeTaskId) { setTask(null); setEpics([]); lastFetchId.current = null; return; }
+
+    const isNewTask = lastFetchId.current !== activeTaskId;
+    if (isNewTask) {
+      setLoading(true);
+      setTab('comments');
+      lastFetchId.current = activeTaskId;
+    }
+
     apiGet<{ ok: boolean; data: TaskDetail }>(`/tasks/${activeTaskId}`)
       .then((r) => {
         setTask(r.data);
-        setEditTitle(r.data.title);
-        setEditDesc(r.data.description ?? '');
-        /* Load epics for this project */
-        apiGet<{ ok: boolean; data: EpicOpt[] }>(`/projects/${r.data.project_code}/epics`)
-          .then((er) => setEpics(er.data))
-          .catch(console.error);
+        if (isNewTask) {
+          setEditTitle(r.data.title);
+          setEditDesc(r.data.description ?? '');
+          apiGet<{ ok: boolean; data: EpicOpt[] }>(`/projects/${r.data.project_code}/epics`)
+            .then((er) => setEpics(er.data))
+            .catch(console.error);
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [isDrawerOpen, activeTaskId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDrawerOpen, activeTaskId, tasksVersion]);
 
   const handleClose = () => dispatch(closeDrawer());
 
@@ -235,10 +535,6 @@ export default function TaskDrawer() {
     }
   }
 
-  const doneSubs  = task?.subtasks.filter((sub) => sub.status === 'completada').length ?? 0;
-  const totalSubs = task?.subtasks.length ?? 0;
-  const progress  = totalSubs > 0 ? Math.round((doneSubs / totalSubs) * 100) : 0;
-
   return (
     <>
       {isDrawerOpen && (
@@ -251,39 +547,58 @@ export default function TaskDrawer() {
         role="complementary"
         aria-label="Detalle de tarea"
       >
-        {/* ── HEADER ────────────────────────────────────── */}
+        {/* ── HEADER ─────────────────────────────────── */}
         <div className={s.header}>
-          {loading ? <Skel w={60} /> : (
-            <span className={s.headerId}>{task?.identifier ?? '—'}</span>
-          )}
-          <button className={s.iconBtn} aria-label="Abrir página completa" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              aria-hidden="true">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-          </button>
-          <button className={s.iconBtn} onClick={handleClose} aria-label="Cerrar panel" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              aria-hidden="true">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <div className={s.headerLeft}>
+            {loading && !task ? <Skel w={80} h={20} /> : (
+              <>
+                <span className={s.headerId}>{task?.identifier ?? '—'}</span>
+                <span className={s.headerSep} aria-hidden="true">·</span>
+                <span className={s.headerProject}>{task?.project_name ?? ''}</span>
+              </>
+            )}
+          </div>
+          <div className={s.headerActions}>
+            <button
+              className={s.iconBtn}
+              aria-label="Ver página completa"
+              type="button"
+              title="Abrir en página completa"
+              onClick={() => {
+                if (!task) return;
+                dispatch(closeDrawer());
+                router.push(`/proyectos/${task.project_code.toLowerCase()}/tareas/${task.id}`);
+              }}
+              disabled={!task}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                aria-hidden="true">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </button>
+            <button className={s.iconBtn} onClick={handleClose} aria-label="Cerrar panel" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                aria-hidden="true">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* ── BODY ─────────────────────────────────────── */}
         <div className={s.body}>
 
-          {/* Título y descripción */}
-          <div className={s.block}>
-            {loading ? (
+          {/* ─── Title & Description ──────────────────── */}
+          <div className={s.titleSection}>
+            {loading && !task ? (
               <div className="flex flex-col gap-2">
-                <Skel w="90%" h={24} />
-                <Skel w="70%" h={16} />
-                <Skel w="80%" h={16} />
+                <Skel w="85%" h={22} />
+                <Skel w="65%" h={14} />
+                <Skel w="75%" h={14} />
               </div>
             ) : (
               <>
@@ -309,168 +624,110 @@ export default function TaskDrawer() {
             )}
           </div>
 
-          <hr className={s.divider} />
-
-          {/* Metadatos */}
-          <div className={s.metaGrid}>
-            {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className={s.metaRow}>
-                  <Skel w={64} />
-                  <Skel w={100} />
-                </div>
-              ))
+          {/* ─── Properties ───────────────────────────── */}
+          <div className={s.propsSection}>
+            {loading && !task ? (
+              <div className={s.propGrid}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className={s.propCell}>
+                    <Skel w={55} h={10} />
+                    <Skel w={100} h={28} />
+                  </div>
+                ))}
+              </div>
             ) : task ? (
-              <>
-                <MetaRow label="Estado">
-                  <select
-                    className={s.metaSelect}
+              <div className={s.propGrid}>
+
+                <div className={s.propCell}>
+                  <span className={s.propCellLabel}>Estado</span>
+                  <StatusPill
                     value={task.status}
-                    onChange={(e) => patchTask({ status: e.target.value }, { status: e.target.value })}
-                  >
-                    {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </MetaRow>
+                    onChange={(v) => patchTask({ status: v }, { status: v })}
+                  />
+                </div>
 
-                <MetaRow label="Prioridad">
-                  <select
-                    className={s.metaSelect}
+                <div className={s.propCell}>
+                  <span className={s.propCellLabel}>Prioridad</span>
+                  <PriorityPill
                     value={task.priority}
-                    onChange={(e) => patchTask({ priority: e.target.value }, { priority: e.target.value })}
-                  >
-                    {Object.entries(PRIO_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </MetaRow>
+                    onChange={(v) => patchTask({ priority: v }, { priority: v })}
+                  />
+                </div>
 
-                <MetaRow label="Asignado">
-                  <select
-                    className={s.metaSelect}
-                    value={task.assignee_id ?? ''}
-                    onChange={(e) => {
-                      const uid = e.target.value || null;
+                <div className={s.propCell}>
+                  <span className={s.propCellLabel}>Asignado</span>
+                  <AssigneePill
+                    assigneeId={task.assignee_id}
+                    assigneeName={task.assignee_name}
+                    assigneeInitials={task.assignee_initials}
+                    assigneeAvatarUrl={users.find(u => u.id === task.assignee_id)?.avatarUrl ?? task.assignee_avatar_url}
+                    assigneeAvatarColor={users.find(u => u.id === task.assignee_id)?.avatarColor ?? task.assignee_avatar_color}
+                    users={users}
+                    onChange={(uid) => {
                       const u = users.find((x) => x.id === uid);
                       patchTask(
-                        { assignee_id: uid, assignee_name: u?.name ?? null, assignee_initials: u?.initials ?? null },
+                        { assignee_id: uid, assignee_name: u?.name ?? null, assignee_initials: u?.initials ?? null, assignee_avatar_url: u?.avatarUrl ?? null, assignee_avatar_color: u?.avatarColor ?? null },
                         { assigneeId: uid },
                       );
                     }}
-                  >
-                    <option value="">Sin asignar</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </MetaRow>
+                  />
+                </div>
 
-                <MetaRow label="Proyecto">
-                  <span className="font-mono text-[0.6875rem] text-[var(--c-muted)]">{task.project_code}</span>
-                  {task.project_name}
-                </MetaRow>
-
-                <MetaRow label="Épica">
-                  <select
-                    className={s.metaSelect}
-                    value={task.epic_id ?? ''}
-                    onChange={(e) => {
-                      const eid = e.target.value || null;
+                <div className={s.propCell}>
+                  <span className={s.propCellLabel}>Épica</span>
+                  <EpicPill
+                    value={task.epic_id}
+                    epics={epics}
+                    onChange={(eid) => {
                       const ep = epics.find((x) => x.id === eid);
-                      patchTask(
-                        { epic_id: eid, epic_name: ep?.name ?? null },
-                        { epicId: eid },
-                      );
+                      patchTask({ epic_id: eid, epic_name: ep?.name ?? null }, { epicId: eid });
                     }}
-                  >
-                    <option value="">Sin épica</option>
-                    {epics.map((ep) => <option key={ep.id} value={ep.id}>{ep.name}</option>)}
-                  </select>
-                </MetaRow>
+                  />
+                </div>
 
-                <MetaRow label="Fecha">
+                <div className={s.propCell}>
+                  <span className={s.propCellLabel}>Fecha límite</span>
                   <input
                     type="date"
-                    className={s.metaDateInput}
+                    className={s.propDateInput}
                     value={task.due_date ? task.due_date.substring(0, 10) : ''}
                     onChange={(e) => {
                       const val = e.target.value || null;
                       patchTask({ due_date: val }, { dueDate: val });
                     }}
                   />
-                </MetaRow>
+                </div>
 
-                <MetaRow label="Creado por">
-                  <Avatar initials={task.creator_initials} />
-                  {task.creator_name}
-                  <span className="text-[var(--c-muted)] text-[0.6875rem]">
-                    · {timeAgo(task.created_at)}
-                  </span>
-                </MetaRow>
-              </>
+                <div className={s.propCell}>
+                  <span className={s.propCellLabel}>Proyecto</span>
+                  <div className={s.propProjectValue}>
+                    <span className={s.propCode}>{task.project_code}</span>
+                    <span className={s.propProjectName}>{task.project_name}</span>
+                  </div>
+                </div>
+
+                <div className={`${s.propCell} ${s.propCellFull}`}>
+                  <span className={s.propCellLabel}>Creado por</span>
+                  <div className={s.propCreatorValue}>
+                    <DrawerAvatar initials={task.creator_initials} avatarUrl={task.creator_avatar_url} avatarColor={task.creator_avatar_color} size={20} />
+                    <span>{task.creator_name}</span>
+                    <span className={s.propTime}>· {timeAgo(task.created_at)}</span>
+                  </div>
+                </div>
+
+              </div>
             ) : null}
           </div>
 
-          <hr className={s.divider} />
-
-          {/* Subtareas */}
-          <div className={s.block}>
-            <span className={s.blockTitle}>
-              Subtareas ({doneSubs}/{totalSubs} completadas)
-            </span>
-
-            {totalSubs > 0 && (
-              <div className={s.progressBar}>
-                <div className={s.progressFill} style={{ width: `${progress}%` }} />
-              </div>
-            )}
-
-            <div className={s.subtaskList}>
-              {loading ? (
-                Array.from({ length: 2 }).map((_, i) => <Skel key={i} w="100%" h={24} />)
-              ) : totalSubs === 0 ? (
-                <p className="text-[13px] text-[var(--c-muted)]">Sin subtareas</p>
-              ) : (
-                task?.subtasks.map((sub) => {
-                  const done = sub.status === 'completada';
-                  return (
-                    <div key={sub.id} className={s.subtaskRow}>
-                      <div className={`${s.checkbox} ${done ? s.checkboxDone : ''}`} aria-hidden="true">
-                        {done && (
-                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none"
-                            stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="2 6 5 9 10 3" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className={s.subtaskId}>{sub.identifier}</span>
-                      <span className={`${s.subtaskLabel} ${done ? s.subtaskLabelDone : ''}`}>
-                        {sub.title}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <button
-              type="button"
-              className={s.addSubtaskBtn}
-              onClick={() => dispatch(openCreateModal('subtask'))}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                aria-hidden="true">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Agregar subtarea
-            </button>
-          </div>
-
-          <hr className={s.divider} />
-
-          {/* Tabs: Comentarios / Actividad */}
-          <div className={s.block}>
+          {/* ─── Tabs: Comments / Activity ─────────────── */}
+          <div className={s.commentsSection}>
             <div className={s.tabs}>
               <button type="button" className={`${s.tab} ${tab === 'comments' ? s.tabActive : ''}`}
                 onClick={() => setTab('comments')}>
-                Comentarios {task && task.comments.length > 0 && `(${task.comments.length})`}
+                Comentarios
+                {task && task.comments.length > 0 && (
+                  <span className={s.tabBadge}>{task.comments.length}</span>
+                )}
               </button>
               <button type="button" className={`${s.tab} ${tab === 'activity' ? s.tabActive : ''}`}
                 onClick={() => setTab('activity')}>
@@ -480,87 +737,102 @@ export default function TaskDrawer() {
 
             {tab === 'comments' && (
               <div className={s.commentList}>
-                {loading ? (
+                {loading && !task ? (
                   Array.from({ length: 2 }).map((_, i) => (
                     <div key={i} className={s.commentRow}>
-                      <Skel w={32} h={32} />
-                      <div className="flex flex-col gap-1 flex-1">
-                        <Skel w={100} h={12} />
-                        <Skel w="90%" h={12} />
+                      <Skel w={28} h={28} />
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <Skel w={100} h={11} />
+                        <Skel w="90%" h={11} />
                       </div>
                     </div>
                   ))
                 ) : task?.comments.length === 0 ? (
-                  <p className="text-[13px] text-[var(--c-muted)] py-2">Sin comentarios aún</p>
+                  <p className={s.emptyText}>Sin comentarios aún</p>
                 ) : (
                   task?.comments.map((c) => (
                     <div key={c.id} className={s.commentRow}>
-                      <Avatar initials={c.initials} large />
-                      <div>
+                      <DrawerAvatar initials={c.initials} avatarUrl={c.avatar_url} avatarColor={c.avatar_color} size={28} />
+                      <div className={s.commentContent}>
                         <div className={s.commentMeta}>
                           <span className={s.commentAuthor}>{c.name}</span>
                           <span className={s.commentTime}>{timeAgo(c.created_at)}</span>
                         </div>
-                        <p className={s.commentText}>{c.body}</p>
+                        <p className={s.commentText}
+                          // eslint-disable-next-line react/no-danger
+                          dangerouslySetInnerHTML={{ __html: buildMirrorHtml(c.body, users.map(u => u.name)) }}
+                        />
                       </div>
                     </div>
                   ))
                 )}
 
-                <form onSubmit={submitComment} className={s.commentInput}>
-                  <div className={s.commentInputWrap}>
-                    {mentionOpen && mentionFiltered.length > 0 && (
-                      <div className={s.mentionList} role="listbox">
-                        {mentionFiltered.map((u, i) => (
-                          <button
-                            key={u.id}
-                            type="button"
-                            role="option"
-                            aria-selected={i === mentionIdx}
-                            className={`${s.mentionItem} ${i === mentionIdx ? s.mentionItemActive : ''}`}
-                            onMouseDown={(e) => { e.preventDefault(); insertMention(u); }}
-                          >
-                            <Avatar initials={u.initials} />
-                            {u.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <textarea
-                      ref={textareaRef}
-                      rows={2}
-                      className={s.commentTextarea}
-                      placeholder="Escribe un comentario... (@nombre para mencionar)"
-                      value={comment}
-                      onChange={handleCommentChange}
-                      onKeyDown={handleCommentKeyDown}
-                      aria-label="Nuevo comentario"
-                    />
-                  </div>
-                  <button type="submit" className={s.commentBtn} disabled={posting || !comment.trim()}>
-                    {posting ? '...' : 'Comentar'}
-                  </button>
-                </form>
               </div>
             )}
 
+            {tab === 'comments' && (
+              <form onSubmit={submitComment} className={s.commentForm}>
+                <div className={s.commentInputWrap}>
+                  {mentionOpen && mentionFiltered.length > 0 && (
+                    <div className={s.mentionList} role="listbox">
+                      {mentionFiltered.map((u, i) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          role="option"
+                          aria-selected={i === mentionIdx}
+                          className={`${s.mentionItem} ${i === mentionIdx ? s.mentionItemActive : ''}`}
+                          onMouseDown={(e) => { e.preventDefault(); insertMention(u); }}
+                        >
+                          <DrawerAvatar initials={u.initials} avatarUrl={u.avatarUrl} avatarColor={u.avatarColor} size={22} />
+                          {u.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    ref={textareaRef}
+                    rows={1}
+                    className={s.commentTextarea}
+                    placeholder=""
+                    value={comment}
+                    onChange={handleCommentChange}
+                    onKeyDown={handleCommentKeyDown}
+                    aria-label="Nuevo comentario"
+                  />
+                  <div
+                    className={s.commentMirror}
+                    aria-hidden="true"
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: buildMirrorHtml(comment, users.map(u => u.name)) }}
+                  />
+                </div>
+                <button type="submit" className={s.commentBtn} disabled={posting || !comment.trim()}>
+                  {posting ? '...' : 'Comentar'}
+                </button>
+              </form>
+            )}
+
+
             {tab === 'activity' && (
               <div className={s.activityList}>
-                {loading ? (
+                {loading && !task ? (
                   Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className={s.activityRow}>
-                      <Skel w={32} h={32} />
+                      <Skel w={28} h={28} />
                       <Skel w="70%" h={12} />
                     </div>
                   ))
                 ) : task?.activity.length === 0 ? (
-                  <p className="text-[13px] text-[var(--c-muted)] py-2">Sin actividad registrada</p>
+                  <p className={s.emptyText}>Sin actividad registrada</p>
                 ) : (
                   task?.activity.map((ev) => (
                     <div key={ev.id} className={s.activityRow}>
-                      <Avatar initials={ev.initials} large />
-                      <span className={s.activityText}>{ev.action}</span>
-                      <span className={s.activityTime}>{timeAgo(ev.created_at)}</span>
+                      <DrawerAvatar initials={ev.initials} avatarUrl={ev.avatar_url} avatarColor={ev.avatar_color} size={28} />
+                      <div className={s.activityContent}>
+                        <span className={s.activityText}>{ev.action}</span>
+                        <span className={s.activityTime}>{timeAgo(ev.created_at)}</span>
+                      </div>
                     </div>
                   ))
                 )}

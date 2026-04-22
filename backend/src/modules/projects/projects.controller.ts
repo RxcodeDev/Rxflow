@@ -21,6 +21,14 @@ interface UpdateProjectDto {
 interface CreateEpicDto {
   name: string;
   description?: string;
+  parent_epic_id?: string | null;
+}
+
+interface UpdateEpicDto {
+  name?: string;
+  description?: string | null;
+  status?: string;
+  parent_epic_id?: string | null;
 }
 
 interface AuthUser { id: string }
@@ -47,6 +55,14 @@ export class ProjectsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.svc.createEpic(code, dto, user.id);
+  }
+
+  @Patch(':code/epics/:epicId')
+  updateEpic(
+    @Param('epicId') epicId: string,
+    @Body() dto: UpdateEpicDto,
+  ) {
+    return this.svc.updateEpic(epicId, dto);
   }
 
   @Get(':code/members')

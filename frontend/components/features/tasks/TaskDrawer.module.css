@@ -12,57 +12,86 @@
 .drawer {
   position: fixed;
   top: 0;
-  right: 0;
+  right: -460px;
   height: 100vh;
-  width: 420px;
+  width: 460px;
   background: var(--c-bg);
   border-left: 1px solid var(--c-border);
   z-index: 40;
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
-  transition: transform 0.2s ease;
+  transition: right 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
 .drawerOpen {
-  transform: translateX(0);
+  right: 0;
 }
 
-/* ── Mobile overrides ──────────────────────────────── */
 @media (max-width: 767px) {
-  .overlay {
-    display: block;
-  }
-
-  .drawer {
-    width: 100%;
-  }
+  .overlay { display: block; }
+  .drawer  { width: 100%; right: -100%; }
 }
 
 /* ── Header ────────────────────────────────────────── */
 .header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.875rem 1rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--c-border);
   flex-shrink: 0;
+  min-height: 48px;
+  gap: 0.5rem;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .headerId {
   font-family: ui-monospace, monospace;
-  font-size: 0.75rem;
-  color: var(--c-muted);
-  flex: 1;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--c-text-sub);
+  background: var(--c-hover);
+  border: 1px solid var(--c-border);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.4375rem;
+  flex-shrink: 0;
+}
+
+.headerSep {
+  color: var(--c-border);
+  flex-shrink: 0;
+}
+
+.headerProject {
+  font-size: 0.8125rem;
+  color: var(--c-text-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
 }
 
 .iconBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border: none;
   background: transparent;
   color: var(--c-muted);
@@ -77,40 +106,27 @@
   color: var(--c-text);
 }
 
+.iconBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ── Scrollable body ───────────────────────────────── */
 .body {
   flex: 1;
-  overflow-y: auto;
-  padding: 1rem;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
 }
 
-/* ── Section block ─────────────────────────────────── */
-.block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
+/* ── Title section ─────────────────────────────────── */
+.titleSection {
+  padding: 1.125rem 1.125rem 1rem;
+  border-bottom: 1px solid var(--c-line);
 }
 
-.blockTitle {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--c-text-sub);
-}
-
-.divider {
-  border: none;
-  border-top: 1px solid var(--c-line);
-  margin: 0;
-}
-
-/* ── Editable title / description ──────────────────── */
 .editableTitle {
-  font-size: 1rem;
+  font-size: 1.0625rem;
   font-weight: 700;
   color: var(--c-text);
   line-height: 1.4;
@@ -118,127 +134,311 @@
   border-radius: 0.375rem;
   border: 1px solid transparent;
   transition: border-color var(--ease), background var(--ease);
-  cursor: text;
   outline: none;
   width: 100%;
   font-family: inherit;
   background: transparent;
+  display: block;
+  margin-bottom: 0.5rem;
 }
 
-.editableTitle:hover,
-.editableDesc:hover {
-  background: var(--c-hover);
-  border-color: var(--c-border);
-}
-
-.editableTitle:focus,
-.editableDesc:focus {
-  background: var(--c-bg);
-  border-color: var(--c-text-sub);
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
-}
+.editableTitle:hover { background: var(--c-hover); border-color: var(--c-border); }
+.editableTitle:focus { background: var(--c-bg); border-color: var(--c-text-sub); box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
 
 .editableDesc {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   color: var(--c-text-sub);
   line-height: 1.6;
   padding: 0.25rem 0.375rem;
   border-radius: 0.375rem;
   border: 1px solid transparent;
   transition: border-color var(--ease), background var(--ease);
-  cursor: text;
   outline: none;
   white-space: pre-wrap;
   width: 100%;
   font-family: inherit;
   resize: none;
   background: transparent;
+  display: block;
 }
 
-/* ── Metadata grid ─────────────────────────────────── */
-.metaGrid {
+.editableDesc:hover { background: var(--c-hover); border-color: var(--c-border); }
+.editableDesc:focus { background: var(--c-bg); border-color: var(--c-text-sub); box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
+
+/* ── Properties section ────────────────────────────── */
+.propsSection {
+  padding: 1rem 1.125rem 0.875rem;
+  border-bottom: 1px solid var(--c-line);
+}
+
+.propGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem 1rem;
+  gap: 0 0.75rem;
 }
 
-.metaRow {
+.propCell {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: 0.3125rem;
+  padding: 0.5rem 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--c-line);
 }
 
-.metaLabel {
-  font-size: 0.6875rem;
-  color: var(--c-text-sub);
+.propCell:nth-last-child(-n+2):not(.propCellFull) {
+  border-bottom: none;
 }
 
-.metaValue {
-  font-size: 0.8125rem;
-  color: var(--c-text);
+.propCellFull {
+  grid-column: 1 / -1;
+  border-bottom: none;
+}
+
+.propCellLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--c-muted);
+}
+
+/* ── Property pills ─────────────────────────────────── */
+.propPill {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-}
-
-.pill {
-  display: inline-block;
-  font-size: 0.75rem;
-  padding: 0.125rem 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
   border: 1px solid var(--c-border);
-  border-radius: 9999px;
+  background: transparent;
   color: var(--c-text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--ease), border-color var(--ease);
+  width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Avatar ────────────────────────────────────────── */
-.avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--c-avatar-bg);
-  color: var(--c-avatar-fg);
-  font-size: 9px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.propPill:hover {
+  background: var(--c-hover);
+  border-color: var(--c-text-sub);
+}
+
+.propPill > svg:last-child {
+  margin-left: auto;
   flex-shrink: 0;
 }
 
-.avatar32 {
-  width: 32px;
-  height: 32px;
-  font-size: 11px;
+.propPillText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 
-/* ── Subtasks ──────────────────────────────────────── */
+.propDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.propMenu {
+  min-width: 185px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 0.625rem;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  padding: 0.25rem;
+}
+
+.propMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.4375rem 0.625rem;
+  border: none;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: var(--c-text-sub);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+
+.propMenuItem:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.propMenuItemActive {
+  color: var(--c-text);
+  font-weight: 600;
+  background: var(--c-hover);
+}
+
+.propProjectValue {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--c-text);
+  min-width: 0;
+}
+
+.propProjectName {
+  font-size: 0.8125rem;
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.propCode {
+  font-family: ui-monospace, monospace;
+  font-size: 0.6875rem;
+  color: var(--c-muted);
+  background: var(--c-hover);
+  border: 1px solid var(--c-border);
+  border-radius: 0.25rem;
+  padding: 0.0625rem 0.375rem;
+  flex-shrink: 0;
+}
+
+.propSelect {
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: var(--c-text);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--ease);
+  max-width: 100%;
+}
+
+.propSelect:hover  { border-color: var(--c-text-sub); }
+.propSelect:focus  { border-color: var(--c-text-sub); box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
+
+.propDateInput {
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: var(--c-text);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--ease);
+}
+
+.propDateInput:focus { border-color: var(--c-text-sub); box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
+
+.propCreatorValue {
+  display: flex;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.8125rem;
+  color: var(--c-text);
+}
+
+.propTime {
+  font-size: 0.6875rem;
+  color: var(--c-muted);
+}
+
+/* ── Subtasks section ──────────────────────────────── */
+.subtasksSection {
+  padding: 0.875rem 1.125rem;
+  border-bottom: 1px solid var(--c-line);
+}
+
+.subtasksHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.subtasksCount {
+  font-size: 0.6875rem;
+  color: var(--c-muted);
+}
+
+.progressBar {
+  height: 3px;
+  background: var(--c-border);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--c-text);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
 .subtaskList {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
+  margin-bottom: 0.375rem;
 }
 
 .subtaskRow {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.1875rem 0;
+  border-radius: 0.375rem;
+  transition: background var(--ease);
+}
+
+.subtaskRow:hover {
+  background: var(--c-hover);
+  padding-left: 0.375rem;
+  padding-right: 0.375rem;
+  margin: 0 -0.375rem;
 }
 
 .checkbox {
   width: 16px;
   height: 16px;
-  border-radius: 3px;
-  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  border: 1.5px solid var(--c-border);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
   transition: background var(--ease), border-color var(--ease);
+  background: transparent;
+  padding: 0;
 }
+
+.checkbox:hover { border-color: var(--c-text-sub); }
 
 .checkboxDone {
   border-color: var(--c-text);
   background: var(--c-text);
+}
+
+.checkboxDone:hover {
+  background: var(--c-text-sub);
+  border-color: var(--c-text-sub);
 }
 
 .subtaskId {
@@ -263,21 +463,7 @@
   color: var(--c-muted);
 }
 
-.progressBar {
-  height: 2px;
-  background: var(--c-border);
-  border-radius: 9999px;
-  overflow: hidden;
-}
-
-.progressFill {
-  height: 100%;
-  background: var(--c-text);
-  border-radius: 9999px;
-  transition: width 0.3s ease;
-}
-
-.addSubtaskBtn {
+.addBtn {
   display: flex;
   align-items: center;
   gap: 0.375rem;
@@ -294,24 +480,43 @@
   text-align: left;
 }
 
-.addSubtaskBtn:hover {
+.addBtn:hover {
   background: var(--c-hover);
   color: var(--c-text);
+}
+
+.emptyText {
+  font-size: 0.8125rem;
+  color: var(--c-muted);
+  padding: 0.25rem 0;
+}
+
+/* ── Comments section ──────────────────────────────── */
+.commentsSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* ── Tabs ──────────────────────────────────────────── */
 .tabs {
   display: flex;
-  gap: 0;
   border-bottom: 1px solid var(--c-border);
-  flex-shrink: 0;
+  padding: 0 1.125rem;
+  margin-bottom: 0;
 }
 
 .tab {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--c-muted);
-  padding: 0.5rem 0.875rem;
+  padding: 0.75rem 0;
+  margin-right: 1.25rem;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
@@ -321,25 +526,42 @@
   transition: color var(--ease), border-color var(--ease);
 }
 
-.tab:hover {
-  color: var(--c-text-sub);
-}
+.tab:hover { color: var(--c-text-sub); }
 
 .tabActive {
   color: var(--c-text);
   border-bottom-color: var(--c-text);
 }
 
-/* ── Comment ───────────────────────────────────────── */
+.tabBadge {
+  font-size: 0.625rem;
+  background: var(--c-hover);
+  color: var(--c-text-sub);
+  border-radius: 9999px;
+  padding: 0.0625rem 0.375rem;
+  font-weight: 600;
+}
+
+/* ── Comment list ──────────────────────────────────── */
 .commentList {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  padding: 1rem 1.125rem;
 }
 
 .commentRow {
   display: flex;
   gap: 0.625rem;
+  align-items: flex-start;
+}
+
+.commentContent {
+  flex: 1;
+  min-width: 0;
 }
 
 .commentMeta {
@@ -363,34 +585,73 @@
 .commentText {
   font-size: 0.8125rem;
   color: var(--c-text-sub);
-  line-height: 1.5;
+  line-height: 1.55;
+  word-break: break-word;
 }
 
-.commentInput {
+.commentForm {
   display: flex;
   gap: 0.5rem;
   align-items: flex-end;
-  margin-top: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.625rem 1.125rem 1rem;
+  border-top: 1px solid var(--c-border);
 }
 
-.commentTextarea {
+.commentInputWrap {
+  position: relative;
   flex: 1;
-  resize: none;
-  font-family: inherit;
-  font-size: 0.8125rem;
-  color: var(--c-text);
   background: var(--c-bg);
   border: 1px solid var(--c-border);
   border-radius: 0.625rem;
-  padding: 0.5rem 0.75rem;
-  outline: none;
   transition: border-color var(--ease), box-shadow var(--ease);
-  placeholder: var(--c-muted);
 }
 
-.commentTextarea:focus {
+.commentInputWrap:focus-within {
   border-color: var(--c-text-sub);
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
+}
+
+.commentTextarea {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  min-height: 2.5rem;
+  color: transparent;
+  caret-color: var(--c-text);
+  background: transparent;
+  border: none;
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+  display: block;
+  overflow: hidden;
+}
+
+.commentTextarea::placeholder {
+  color: var(--c-muted);
+}
+
+.commentMirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  padding: 0.5rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--c-text);
 }
 
 .commentBtn {
@@ -401,84 +662,47 @@
   background: var(--c-text);
   border: none;
   border-radius: 0.625rem;
-  padding: 0.5rem 0.875rem;
+  padding: 0.5625rem 1rem;
   cursor: pointer;
   white-space: nowrap;
   transition: opacity var(--ease);
   flex-shrink: 0;
 }
 
-.commentBtn:hover {
-  opacity: 0.85;
-}
+.commentBtn:hover:not(:disabled) { opacity: 0.82; }
+.commentBtn:disabled { opacity: 0.4; cursor: default; }
 
-/* ── Activity log ──────────────────────────────────── */
+/* ── Activity list ─────────────────────────────────── */
 .activityList {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 1rem 1.125rem;
 }
 
 .activityRow {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.activityContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
 }
 
 .activityText {
   font-size: 0.8125rem;
   color: var(--c-text-sub);
-  flex: 1;
-  min-width: 0;
+  line-height: 1.4;
 }
 
 .activityTime {
   font-size: 0.6875rem;
   color: var(--c-muted);
-  flex-shrink: 0;
-}
-
-/* ── Selects (Estado, Prioridad, Asignado, Fecha) ── */
-.metaSelect {
-  font-size: 0.8125rem;
-  font-family: inherit;
-  color: var(--c-text);
-  background: var(--c-hover);
-  border: 1px solid var(--c-border);
-  border-radius: 0.375rem;
-  padding: 0.1875rem 0.5rem;
-  cursor: pointer;
-  outline: none;
-  transition: border-color var(--ease), box-shadow var(--ease);
-  max-width: 100%;
-}
-
-.metaSelect:hover {
-  border-color: var(--c-text-sub);
-}
-
-.metaSelect:focus {
-  border-color: var(--c-text-sub);
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
-}
-
-.metaDateInput {
-  font-size: 0.8125rem;
-  font-family: inherit;
-  color: var(--c-text);
-  background: var(--c-hover);
-  border: 1px solid var(--c-border);
-  border-radius: 0.375rem;
-  padding: 0.1875rem 0.5rem;
-  cursor: pointer;
-  outline: none;
-  transition: border-color var(--ease), box-shadow var(--ease);
-  width: 100%;
-}
-
-.metaDateInput:focus {
-  border-color: var(--c-text-sub);
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
 }
 
 /* ── Mention dropdown ──────────────────────────────── */
@@ -490,7 +714,7 @@
   background: var(--c-bg);
   border: 1px solid var(--c-border);
   border-radius: 0.5rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
   z-index: 50;
   max-height: 160px;
   overflow-y: auto;
@@ -512,12 +736,5 @@
   transition: background var(--ease);
 }
 
-.mentionItem:hover,
-.mentionItemActive {
-  background: var(--c-hover);
-}
+.mentionItem:hover, .mentionItemActive { background: var(--c-hover); }
 
-.commentInputWrap {
-  position: relative;
-  flex: 1;
-}

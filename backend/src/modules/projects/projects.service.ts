@@ -36,8 +36,12 @@ export class ProjectsService {
     return this.repo.findEpicsByCode(code);
   }
 
-  async createEpic(code: string, dto: { name: string; description?: string }, userId: string) {
+  async createEpic(code: string, dto: { name: string; description?: string; parent_epic_id?: string | null }, userId: string) {
     return this.repo.createEpic(code, dto, userId);
+  }
+
+  async updateEpic(id: string, dto: { name?: string; description?: string | null; status?: string; parent_epic_id?: string | null }) {
+    return this.repo.updateEpic(id, dto);
   }
 
   async getMembers(code: string) {

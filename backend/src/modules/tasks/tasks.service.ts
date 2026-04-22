@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { TasksRepository } from './tasks.repository';
-import { NotificationsRepository } from '../notifications/notifications.repository';
 
 @Injectable()
 export class TasksService {
   constructor(
     private readonly repo: TasksRepository,
-    private readonly notificationsRepo: NotificationsRepository,
   ) {}
 
   findByAssignee(userId: string) {
@@ -48,7 +46,7 @@ export class TasksService {
   }
 
   createComment(taskId: string, authorId: string, body: string) {
-    return this.repo.createComment(taskId, authorId, body, this.notificationsRepo);
+    return this.repo.createComment(taskId, authorId, body);
   }
 
   logActivity(taskId: string, userId: string, action: string) {

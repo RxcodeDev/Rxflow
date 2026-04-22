@@ -123,6 +123,9 @@ GET  /auth/me             [JWT]
 GET  /projects            → ProjectSummary[]
 GET  /projects/:code      → ProjectSummary
 GET  /projects/:code/tasks → TaskItem[]
+GET  /projects/:code/epics → EpicItem[]
+POST /projects/:code/epics { name, description?, parent_epic_id? }
+PATCH /projects/:code/epics/:epicId { name?, description?, status?, parent_epic_id? }
 
 GET  /tasks/mine          → TaskItem[]  (usa @CurrentUser)
 GET  /tasks?projectCode=&status=&cycleId=  → TaskItem[]

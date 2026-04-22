@@ -64,6 +64,8 @@ export interface MemberItem {
   email: string;
   role: string;
   initials: string;
+  avatar_url: string | null;
+  avatar_color: string | null;
   presence_status: string;
   last_seen_at: string | null;
   projects: string[];
@@ -86,6 +88,8 @@ export interface EpicItem {
   name: string;
   description: string | null;
   status: string; // 'activa' | 'completada' | 'archivada'
+  parent_epic_id: string | null;
+  parent_epic_name: string | null;
 }
 
 export interface PaginatedResponse<T> {

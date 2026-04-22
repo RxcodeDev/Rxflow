@@ -134,18 +134,28 @@ export class ProjectsRepository {
     await this.pool.query(`DELETE FROM projects WHERE id = $1`, [id]);
   }
 
-  async findEpicsByCode(code: string): Promise<{ id: string; name: string; description: string | null; status: string }[]> {
+  async findEpicsByCode(code: string): Promise<{
+    id: string; name: string; description: string | null;
+    status: string; parent_epic_id: string | null; parent_epic_name: string | null;
+  }[]> {
     const { rows } = await this.pool.query(`
-      SELECT e.id, e.name, e.description, e.status
+      SELECT e.id, e.name, e.description, e.status,
+             e.parent_epic_id,
+             pe.name AS parent_epic_name
       FROM epics e
       JOIN projects p ON p.id = e.project_id
+      LEFT JOIN epics pe ON pe.id = e.parent_epic_id
       WHERE UPPER(p.code) = UPPER($1)
       ORDER BY e.name
     `, [code]);
     return rows;
   }
 
-  async createEpic(code: string, dto: { name: string; description?: string }, createdBy: string): Promise<{ id: string; name: string; description: string | null; status: string }> {
+  async createEpic(
+    code: string,
+    dto: { name: string; description?: string; parent_epic_id?: string | null },
+    createdBy: string,
+  ): Promise<{ id: string; name: string; description: string | null; status: string; parent_epic_id: string | null; parent_epic_name: string | null }> {
     const { rows: [proj] } = await this.pool.query(
       'SELECT id FROM projects WHERE UPPER(code) = UPPER($1)',
       [code],
@@ -153,12 +163,42 @@ export class ProjectsRepository {
     if (!proj) throw new Error('Proyecto no encontrado');
 
     const { rows: [epic] } = await this.pool.query(
-      `INSERT INTO epics (project_id, name, description, created_by)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, description, status`,
-      [proj.id, dto.name, dto.description || null, createdBy],
+      `INSERT INTO epics (project_id, name, description, created_by, parent_epic_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, description, status, parent_epic_id`,
+      [proj.id, dto.name, dto.description || null, createdBy, dto.parent_epic_id ?? null],
     );
-    return epic;
+    return { ...epic, parent_epic_name: null };
+  }
+
+  async updateEpic(
+    id: string,
+    dto: { name?: string; description?: string | null; status?: string; parent_epic_id?: string | null },
+  ): Promise<{ id: string; name: string; description: string | null; status: string; parent_epic_id: string | null; parent_epic_name: string | null } | null> {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+    if (dto.name        !== undefined) { fields.push(`name = $${i++}`);          values.push(dto.name); }
+    if (dto.description !== undefined) { fields.push(`description = $${i++}`);   values.push(dto.description); }
+    if (dto.status      !== undefined) { fields.push(`status = $${i++}`);        values.push(dto.status); }
+    if ('parent_epic_id' in dto)       { fields.push(`parent_epic_id = $${i++}`); values.push(dto.parent_epic_id ?? null); }
+    if (fields.length === 0) return null;
+    values.push(id);
+    const { rows } = await this.pool.query(
+      `UPDATE epics SET ${fields.join(', ')} WHERE id = $${i}
+       RETURNING id, name, description, status, parent_epic_id`,
+      values,
+    );
+    if (!rows[0]) return null;
+    // Resolve parent name
+    let parent_epic_name: string | null = null;
+    if (rows[0].parent_epic_id) {
+      const { rows: [parent] } = await this.pool.query(
+        'SELECT name FROM epics WHERE id = $1', [rows[0].parent_epic_id],
+      );
+      parent_epic_name = parent?.name ?? null;
+    }
+    return { ...rows[0], parent_epic_name };
   }
 
   async findMembersByCode(_code: string): Promise<{ id: string; name: string; initials: string }[]> {
