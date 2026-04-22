@@ -3,7 +3,7 @@
 import { useState, useEffect, use, useMemo } from 'react';
 import Link from 'next/link';
 import { apiGet } from '@/lib/api';
-import { useUIDispatch } from '@/store/UIContext';
+import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import type { TaskItem, ProjectSummary, ApiWrapped } from '@/types/api.types';
 import ProjectViewTabs from '@/components/features/projects/ProjectViewTabs';
@@ -19,6 +19,7 @@ export default function ListaPage({ params }: { params: Promise<{ id: string }> 
   const { id: projectCode } = use(params);
   const code = projectCode.toUpperCase();
   const dispatch = useUIDispatch();
+  const { tasksVersion } = useUIState();
 
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [tasks,   setTasks]   = useState<TaskItem[]>([]);
@@ -40,7 +41,7 @@ export default function ListaPage({ params }: { params: Promise<{ id: string }> 
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, tasksVersion]);
 
   const filtered = useMemo(() =>
     tasks.filter((t) => {

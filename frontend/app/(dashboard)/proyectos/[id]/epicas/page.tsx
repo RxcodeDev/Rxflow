@@ -10,7 +10,7 @@ import Input from '@/components/ui/Input';
 import { playSuccess } from '@/hooks/useSound';
 import ProjectViewTabs from '@/components/features/projects/ProjectViewTabs';
 import TaskCreateModal from '@/components/features/projects/TaskCreateModal';
-import { useUIDispatch } from '@/store/UIContext';
+import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import { STATUS_LABEL as TASK_STATUS_LABEL, PRIORITY_STYLE } from '@/components/features/projects/projectShared';
 
@@ -77,6 +77,7 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
   const { id: projectCode } = use(params);
   const code = projectCode.toUpperCase();
   const dispatch = useUIDispatch();
+  const { tasksVersion } = useUIState();
 
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [epics,   setEpics]   = useState<EpicItem[]>([]);
@@ -124,7 +125,7 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, tasksVersion]);
 
   function openEpicModal() {
     setEpicName(''); setEpicDesc(''); setNameError(''); setEpicSaveError('');

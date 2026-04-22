@@ -5,7 +5,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { CycleSummary, ProjectSummary, TaskItem, ApiWrapped } from '@/types/api.types';
 import Modal from '@/components/ui/Modal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import { useUIDispatch } from '@/store/UIContext';
+import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import { playSuccess, playDelete } from '@/hooks/useSound';
 
@@ -35,6 +35,7 @@ export default function CyclesPage() {
   const [cycleTasks, setCycleTasks] = useState<Record<string, TaskItem[]>>({});
   const [tasksLoading, setTasksLoading] = useState<Record<string, boolean>>({});
   const dispatch = useUIDispatch();
+  const { tasksVersion } = useUIState();
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -61,7 +62,7 @@ export default function CyclesPage() {
 
   useEffect(() => {
     fetchCycles();
-  }, [fetchCycles]);
+  }, [fetchCycles, tasksVersion]);
 
   function openModal() {
     setForm({ project_code: '', name: '', start_date: '', end_date: '' });

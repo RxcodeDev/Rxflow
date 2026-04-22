@@ -4,7 +4,7 @@ import { useState, useEffect, use, useMemo, useCallback } from 'react';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { TaskItem, ProjectSummary, ApiWrapped } from '@/types/api.types';
 import Modal from '@/components/ui/Modal';
-import { useUIDispatch } from '@/store/UIContext';
+import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import ProjectViewTabs from '@/components/features/projects/ProjectViewTabs';
 import TaskCreateModal from '@/components/features/projects/TaskCreateModal';
@@ -115,6 +115,7 @@ function TaskCard({
 export default function BoardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: code } = use(params);
   const dispatch = useUIDispatch();
+  const { tasksVersion } = useUIState();
 
   const [project,  setProject]  = useState<ProjectSummary | null>(null);
   const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
@@ -173,7 +174,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, tasksVersion]);
 
   // Client-side filtering
   const filtered = useMemo(() =>
@@ -219,7 +220,7 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         {loading ? (
           <Skeleton className="h-8 w-48 mb-2" />
         ) : (
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <div className="flex items-baseline gap-0">
                 <h1 className="text-2xl font-bold text-[var(--c-text)]">{project?.name}</h1>
@@ -229,19 +230,10 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
                 {project?.active_cycle ? `${project.active_cycle} · ` : ''}{openTasks} tareas abiertas
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => openCreate('backlog')}
-              className="shrink-0 text-sm font-semibold text-[var(--c-text-sub)] border border-[var(--c-border)] rounded-[0.625rem] px-3 py-2 bg-transparent hover:bg-[var(--c-hover)] transition-colors cursor-pointer font-[inherit]"
-            >
-              + Nueva tarea
-            </button>
+            {/* View tabs — same position as other views */}
+            <ProjectViewTabs projectCode={code} active="board" />
           </div>
         )}
-        {/* View tabs */}
-        <div className="mt-2">
-          <ProjectViewTabs projectCode={code} active="board" />
-        </div>
       </div>
 
       {/* Filters */}
@@ -273,6 +265,15 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
           onChange={(e) => setFilterSearch(e.target.value)}
           className="w-full sm:w-[180px] border border-[var(--c-border)] rounded-[6px] px-3 py-1.5 text-[13px] bg-[var(--c-bg)] text-[var(--c-text)] placeholder:text-[var(--c-muted)] outline-none focus:border-[var(--c-text-sub)] transition-colors font-[inherit]"
         />
+        <div className="ml-auto">
+          <button
+            type="button"
+            onClick={() => openCreate('backlog')}
+            className="shrink-0 text-sm font-semibold text-[var(--c-text-sub)] border border-[var(--c-border)] rounded-[0.625rem] px-3 py-1.5 bg-transparent hover:bg-[var(--c-hover)] transition-colors cursor-pointer font-[inherit]"
+          >
+            + Nueva tarea
+          </button>
+        </div>
       </div>
 
       {/* Board */}

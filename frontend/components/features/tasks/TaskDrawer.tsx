@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import s from './TaskDrawer.module.css';
 import { useUIState, useUIDispatch } from '@/store/UIContext';
-import { closeDrawer, openCreateModal } from '@/store/slices/uiSlice';
+import { closeDrawer, openCreateModal, bumpTasks } from '@/store/slices/uiSlice';
 import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import type { MemberItem, ApiWrapped } from '@/types/api.types';
 
@@ -147,11 +147,13 @@ export default function TaskDrawer() {
   function patchTask(localMerge: Partial<TaskDetail>, dto: Record<string, unknown>) {
     if (!activeTaskId) return;
     setTask((t) => t ? { ...t, ...localMerge } : t);
-    apiPatch(`/tasks/${activeTaskId}`, dto).catch((err) => {
-      console.error(err);
-      apiGet<{ ok: boolean; data: TaskDetail }>(`/tasks/${activeTaskId}`)
-        .then((r) => setTask(r.data)).catch(console.error);
-    });
+    apiPatch(`/tasks/${activeTaskId}`, dto)
+      .then(() => dispatch(bumpTasks()))
+      .catch((err) => {
+        console.error(err);
+        apiGet<{ ok: boolean; data: TaskDetail }>(`/tasks/${activeTaskId}`)
+          .then((r) => setTask(r.data)).catch(console.error);
+      });
   }
 
   function saveTitle() {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiGet, apiPatch } from '@/lib/api';
+import { useUIState } from '@/store/UIContext';
 import type { TaskItem, NotificationItem, ProjectSummary, CycleSummary, ApiWrapped } from '@/types/api.types';
 
 /* ── Brand accents — used sparingly ───────────────────── */
@@ -81,6 +82,7 @@ function Ring({ pct, color, size = 40 }: { pct: number; color: string; size?: nu
 /* ── Page ─────────────────────────────────────────────── */
 export default function InicioPage() {
   const { user }  = useAuth();
+  const { tasksVersion } = useUIState();
   const [myTasks,  setMyTasks]  = useState<TaskItem[]>([]);
   const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -105,7 +107,7 @@ export default function InicioPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [tasksVersion]);
 
   const activeCycle        = useMemo(() => cycles.find((c) => c.status === 'activo') ?? null, [cycles]);
   const activeProjectCount = projects.filter((p) => p.status === 'activo').length;

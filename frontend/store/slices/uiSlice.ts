@@ -13,6 +13,8 @@ export interface UiState {
 
   // Versión de proyectos — incrementar para forzar re-fetch en Sidebar
   projectsVersion: number;
+  // Versión de tareas — incrementar para forzar re-fetch en todas las vistas de tareas
+  tasksVersion: number;
 }
 
 export const initialUiState: UiState = {
@@ -24,6 +26,7 @@ export const initialUiState: UiState = {
   activeTaskId: null,
   activeProjectId: null,
   projectsVersion: 0,
+  tasksVersion: 0,
 };
 
 /* ── Action types ───────────────────────────────────── */
@@ -32,7 +35,8 @@ export type UiAction =
   | { type: 'ui/closeCreateModal' }
   | { type: 'ui/openDrawer'; payload: { taskId: string; projectId: string } }
   | { type: 'ui/closeDrawer' }
-  | { type: 'ui/bumpProjects' };
+  | { type: 'ui/bumpProjects' }
+  | { type: 'ui/bumpTasks' };
 
 /* ── Action creators ────────────────────────────────── */
 export const openCreateModal = (
@@ -49,6 +53,8 @@ export const openDrawer = (payload: {
 export const closeDrawer = (): UiAction => ({ type: 'ui/closeDrawer' });
 
 export const bumpProjects = (): UiAction => ({ type: 'ui/bumpProjects' });
+
+export const bumpTasks = (): UiAction => ({ type: 'ui/bumpTasks' });
 
 /* ── Reducer ────────────────────────────────────────── */
 export default function uiReducer(
@@ -71,6 +77,8 @@ export default function uiReducer(
       return { ...state, isDrawerOpen: false, activeTaskId: null, activeProjectId: null };
     case 'ui/bumpProjects':
       return { ...state, projectsVersion: state.projectsVersion + 1 };
+    case 'ui/bumpTasks':
+      return { ...state, tasksVersion: state.tasksVersion + 1 };
     default:
       return state;
   }
