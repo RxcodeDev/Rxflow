@@ -28,6 +28,14 @@
 
   /* Motion */
   --ease: 0.25s ease;
+
+  /* Cycle status colors */
+  --c-cycle-active:      #16a34a;
+  --c-cycle-active-bg:   #f0fdf4;
+  --c-cycle-planned:     #2563eb;
+  --c-cycle-planned-bg:  #eff6ff;
+  --c-cycle-done:        #9ca3af;
+  --c-cycle-done-bg:     #f3f4f6;
 }
 
 @theme inline {
@@ -49,6 +57,14 @@
   --c-tooltip-bg: #e0e0e0;
   --c-avatar-bg:  #2a2a2a;
   --c-avatar-fg:  #666;
+
+  /* Cycle status colors (dark) */
+  --c-cycle-active:      #4ade80;
+  --c-cycle-active-bg:   rgba(74, 222, 128, 0.12);
+  --c-cycle-planned:     #60a5fa;
+  --c-cycle-planned-bg:  rgba(96, 165, 250, 0.12);
+  --c-cycle-done:        #6b7280;
+  --c-cycle-done-bg:     rgba(107, 114, 128, 0.12);
 }
 
 /* ── Reduce motion ────────────────────────────────────── */

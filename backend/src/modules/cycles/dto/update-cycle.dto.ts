@@ -2,14 +2,11 @@ import { IsString, IsNotEmpty, IsOptional, IsDateString, IsIn } from 'class-vali
 
 const STATUSES = ['planificado', 'activo', 'completado'] as const;
 
-export class CreateCycleDto {
+export class UpdateCycleDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  project_code!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  name!: string;
+  name?: string;
 
   @IsOptional()
   @IsIn(STATUSES)
@@ -17,9 +14,9 @@ export class CreateCycleDto {
 
   @IsOptional()
   @IsDateString()
-  start_date?: string;
+  start_date?: string | null;
 
   @IsOptional()
   @IsDateString()
-  end_date?: string;
+  end_date?: string | null;
 }

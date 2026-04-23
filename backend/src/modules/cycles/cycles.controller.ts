@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CyclesService } from './cycles.service';
 import { CreateCycleDto } from './dto/create-cycle.dto';
+import { UpdateCycleDto } from './dto/update-cycle.dto';
 
 @Controller('cycles')
 @UseGuards(JwtAuthGuard)
@@ -42,5 +43,18 @@ export class CyclesController {
   @HttpCode(204)
   addEpicTasks(@Param('id') id: string, @Param('epicId') epicId: string) {
     return this.svc.addEpicTasks(id, epicId);
+  }
+
+  /** Update cycle name, status, dates */
+  @Patch(':id')
+  updateCycle(@Param('id') id: string, @Body() dto: UpdateCycleDto) {
+    return this.svc.update(id, dto);
+  }
+
+  /** Delete a cycle (detaches its tasks first) */
+  @Delete(':id')
+  @HttpCode(204)
+  deleteCycle(@Param('id') id: string) {
+    return this.svc.delete(id);
   }
 }

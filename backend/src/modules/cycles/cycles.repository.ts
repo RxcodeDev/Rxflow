@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { getPool } from '../../config/database.config';
 import type { CycleSummary } from './entities/cycle.entity';
 import type { CreateCycleDto } from './dto/create-cycle.dto';
+import type { UpdateCycleDto } from './dto/update-cycle.dto';
 
 @Injectable()
 export class CyclesRepository {
@@ -80,12 +81,13 @@ export class CyclesRepository {
 
     const startDate = dto.start_date || null;
     const endDate = dto.end_date || null;
+    const status = dto.status ?? 'planificado';
 
     const { rows: [cycle] } = await this.pool.query(
       `INSERT INTO cycles (id, project_id, name, number, status, start_date, end_date, scope_pct)
-       VALUES (gen_random_uuid(), $1, $2, $3, 'planificado', $4, $5, 100)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 100)
        RETURNING id`,
-      [project.id, dto.name, number, startDate, endDate],
+      [project.id, dto.name, number, status, startDate, endDate],
     );
     return (await this.findById(cycle.id as string))!;
   }
@@ -111,5 +113,36 @@ export class CyclesRepository {
        WHERE epic_id = $2 AND parent_task_id IS NULL`,
       [cycleId, epicId],
     );
+  }
+
+  async update(id: string, dto: UpdateCycleDto): Promise<CycleSummary | null> {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (dto.name !== undefined)       { sets.push(`name = $${idx++}`);       values.push(dto.name); }
+    if (dto.status !== undefined)     { sets.push(`status = $${idx++}`);     values.push(dto.status); }
+    if (dto.start_date !== undefined) { sets.push(`start_date = $${idx++}`); values.push(dto.start_date); }
+    if (dto.end_date !== undefined)   { sets.push(`end_date = $${idx++}`);   values.push(dto.end_date); }
+
+    if (sets.length === 0) return this.findById(id);
+
+    sets.push(`updated_at = NOW()`);
+    values.push(id);
+
+    await this.pool.query(
+      `UPDATE cycles SET ${sets.join(', ')} WHERE id = $${idx}`,
+      values,
+    );
+    return this.findById(id);
+  }
+
+  async delete(id: string): Promise<void> {
+    // Detach tasks from cycle first
+    await this.pool.query(
+      `UPDATE tasks SET cycle_id = NULL WHERE cycle_id = $1`,
+      [id],
+    );
+    await this.pool.query(`DELETE FROM cycles WHERE id = $1`, [id]);
   }
 }

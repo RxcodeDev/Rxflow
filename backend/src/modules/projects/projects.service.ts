@@ -44,6 +44,10 @@ export class ProjectsService {
     return this.repo.updateEpic(id, dto);
   }
 
+  async deleteEpic(id: string) {
+    await this.repo.deleteEpic(id);
+  }
+
   async getMembers(code: string) {
     return this.repo.findMembersByCode(code);
   }

@@ -6,6 +6,8 @@ import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer, bumpTasks } from '@/store/slices/uiSlice';
 import type { TaskItem, ApiWrapped } from '@/types/api.types';
 
+type EpicItem = { id: string; name: string; status: string };
+
 /* ── Constants ───────────────────────────────────────── */
 const STATUS_GROUPS = ['en_progreso', 'en_revision', 'backlog', 'bloqueado', 'completada'] as const;
 type StatusKey = typeof STATUS_GROUPS[number];
@@ -133,6 +135,72 @@ function StatusMenu({
   );
 }
 
+/* ── FilterSelect ───────────────────────────────────── */
+function FilterSelect({
+  value, onChange, options, placeholder, disabled = false, loading = false, width = 150,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+  disabled?: boolean;
+  loading?: boolean;
+  width?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.value === value);
+
+  useEffect(() => {
+    function h(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative" style={{ width }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-1.5 text-[12px] rounded-lg px-2.5 py-1.5 border border-[var(--c-border)] bg-[var(--c-bg)] cursor-pointer font-[inherit] transition-colors hover:border-[var(--c-text-sub)] disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none"
+        style={{ color: selected ? 'var(--c-text)' : 'var(--c-muted)' }}
+      >
+        <span className="truncate">{loading ? 'Cargando…' : (selected?.label ?? placeholder)}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"
+          className="shrink-0 text-[var(--c-muted)] transition-transform"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full mt-1 left-0 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] shadow-lg overflow-hidden py-1" style={{ minWidth: width, maxWidth: 260 }}>
+          <button type="button" onClick={() => { onChange(''); setOpen(false); }}
+            className="w-full text-left px-3 py-1.5 text-[12px] cursor-pointer font-[inherit] border-none transition-colors hover:bg-[var(--c-hover)]"
+            style={{ color: value === '' ? 'var(--c-accent)' : 'var(--c-muted)' }}>
+            {placeholder}
+          </button>
+          {options.length > 0 && <div className="my-1 h-px bg-[var(--c-line)]" />}
+          {options.map(opt => (
+            <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-[12px] cursor-pointer font-[inherit] border-none transition-colors hover:bg-[var(--c-hover)] flex items-center justify-between gap-2"
+              style={{ color: 'var(--c-text)' }}>
+              <span className="truncate">{opt.label}</span>
+              {opt.value === value && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true" className="shrink-0" style={{ color: 'var(--c-accent)' }}>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Page ────────────────────────────────────────────── */
 type Tab = 'activas' | 'completadas' | 'todas';
 
@@ -142,6 +210,12 @@ export default function MisTareasPage() {
   const [tasks,   setTasks]   = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab,     setTab]     = useState<Tab>('activas');
+
+  // Filters
+  const [filterProject, setFilterProject] = useState('');
+  const [filterEpic,    setFilterEpic]    = useState('');
+  const [filterEpics,   setFilterEpics]   = useState<EpicItem[]>([]);
+  const [epicLoading,   setEpicLoading]   = useState(false);
 
   useEffect(() => {
     apiGet<ApiWrapped<TaskItem[]>>('/tasks/mine')
@@ -167,11 +241,33 @@ export default function MisTareasPage() {
     handleStatusChange(task.id, next);
   }, [handleStatusChange]);
 
+  // Load epics when project filter changes
+  useEffect(() => {
+    if (!filterProject) { setFilterEpics([]); setFilterEpic(''); return; }
+    setEpicLoading(true);
+    setFilterEpic('');
+    apiGet<ApiWrapped<EpicItem[]>>(`/projects/${filterProject}/epics`)
+      .then(res => setFilterEpics(res.data.filter(e => e.status === 'activa')))
+      .catch(console.error)
+      .finally(() => setEpicLoading(false));
+  }, [filterProject]);
+
+  const uniqueProjects = useMemo(() => {
+    const map = new Map<string, string>();
+    tasks.forEach(t => map.set(t.project_code, t.project_name));
+    return [...map.entries()].map(([code, name]) => ({ code, name }));
+  }, [tasks]);
+
   const visibleTasks = useMemo(() => {
-    if (tab === 'activas')     return tasks.filter((t) => t.status !== 'completada');
-    if (tab === 'completadas') return tasks.filter((t) => t.status === 'completada');
-    return tasks;
-  }, [tasks, tab]);
+    let base = tasks;
+    if (tab === 'activas')     base = base.filter((t) => t.status !== 'completada');
+    if (tab === 'completadas') base = base.filter((t) => t.status === 'completada');
+    if (filterProject) base = base.filter(t => t.project_code === filterProject);
+    if (filterEpic)    base = base.filter(t => t.epic_id === filterEpic);
+    return base;
+  }, [tasks, tab, filterProject, filterEpic]);
+
+  const hasFilter = !!filterProject || !!filterEpic;
 
   const grouped = useMemo(() =>
     STATUS_GROUPS
@@ -192,11 +288,47 @@ export default function MisTareasPage() {
     <div className="flex flex-col gap-6">
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text)]">Mis tareas</h1>
-        <p className="text-[13px] text-[var(--c-text-sub)] mt-0.5">
-          {loading ? '...' : `${activeCount} tarea${activeCount !== 1 ? 's' : ''} activa${activeCount !== 1 ? 's' : ''}`}
-        </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="mr-auto">
+          <h1 className="text-2xl font-bold text-[var(--c-text)]">Mis tareas</h1>
+          <p className="text-[13px] text-[var(--c-text-sub)] mt-0.5">
+            {loading ? '...' : `${activeCount} tarea${activeCount !== 1 ? 's' : ''} activa${activeCount !== 1 ? 's' : ''}`}
+          </p>
+        </div>
+
+        {/* Filters */}
+        {!loading && tasks.length > 0 && (
+          <div className="flex items-center gap-2 shrink-0 mr-6">
+            <FilterSelect
+              value={filterProject}
+              onChange={setFilterProject}
+              options={uniqueProjects.map(p => ({ value: p.code, label: p.name }))}
+              placeholder="Proyecto"
+              width={150}
+            />
+            <FilterSelect
+              value={filterEpic}
+              onChange={setFilterEpic}
+              options={filterEpics.map(e => ({ value: e.id, label: e.name }))}
+              placeholder="Épica"
+              disabled={!filterProject}
+              loading={epicLoading}
+              width={150}
+            />
+            {hasFilter && (
+              <button
+                type="button"
+                onClick={() => { setFilterProject(''); setFilterEpic(''); }}
+                className="flex items-center gap-1 text-[11px] text-[var(--c-muted)] hover:text-[var(--c-text)] transition-colors cursor-pointer bg-transparent border-none font-[inherit]"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                Limpiar
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

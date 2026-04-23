@@ -171,10 +171,31 @@ export class ProjectsRepository {
     return { ...epic, parent_epic_name: null };
   }
 
+  /** Walks up the parent chain to detect if assigning parentId to epicId would create a cycle */
+  private async wouldCreateCycle(epicId: string, parentId: string): Promise<boolean> {
+    let current: string | null = parentId;
+    const visited = new Set<string>();
+    while (current) {
+      if (current === epicId) return true;
+      if (visited.has(current)) break; // broken chain in DB, stop
+      visited.add(current);
+      const { rows } = await this.pool.query(
+        'SELECT parent_epic_id FROM epics WHERE id = $1', [current],
+      );
+      current = rows[0]?.parent_epic_id ?? null;
+    }
+    return false;
+  }
+
   async updateEpic(
     id: string,
     dto: { name?: string; description?: string | null; status?: string; parent_epic_id?: string | null },
   ): Promise<{ id: string; name: string; description: string | null; status: string; parent_epic_id: string | null; parent_epic_name: string | null } | null> {
+    // Prevent circular parent references
+    if (dto.parent_epic_id) {
+      const cycle = await this.wouldCreateCycle(id, dto.parent_epic_id);
+      if (cycle) throw new Error('Asignar esta épica padre crearía una referencia circular');
+    }
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -199,6 +220,12 @@ export class ProjectsRepository {
       parent_epic_name = parent?.name ?? null;
     }
     return { ...rows[0], parent_epic_name };
+  }
+
+  async deleteEpic(id: string): Promise<void> {
+    // Detach children before deleting
+    await this.pool.query(`UPDATE epics SET parent_epic_id = NULL WHERE parent_epic_id = $1`, [id]);
+    await this.pool.query(`DELETE FROM epics WHERE id = $1`, [id]);
   }
 
   async findMembersByCode(_code: string): Promise<{ id: string; name: string; initials: string }[]> {

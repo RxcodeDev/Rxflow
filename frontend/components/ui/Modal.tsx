@@ -6,10 +6,11 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  actions?: ReactNode;
   children: ReactNode;
 }
 
-export default function Modal({ open, onClose, title, children }: ModalProps) {
+export default function Modal({ open, onClose, title, actions, children }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -38,11 +39,13 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
             <h2 id="modal-title" className="text-[1.125rem] font-bold text-[var(--c-text)]">
               {title}
             </h2>
-            <button
-              onClick={onClose}
-              className="flex items-center justify-center text-[var(--c-muted)] hover:text-[var(--c-text-sub)] transition-colors cursor-pointer"
-              aria-label="Cerrar"
-            >
+            <div className="flex items-center gap-1">
+              {actions}
+              <button
+                onClick={onClose}
+                className="flex items-center justify-center text-[var(--c-muted)] hover:text-[var(--c-text-sub)] transition-colors cursor-pointer"
+                aria-label="Cerrar"
+              >
               <svg
                 width="18"
                 height="18"
@@ -56,7 +59,8 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
               >
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
-            </button>
+              </button>
+            </div>
           </div>
         )}
         {children}

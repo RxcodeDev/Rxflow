@@ -65,6 +65,12 @@ export class ProjectsController {
     return this.svc.updateEpic(epicId, dto);
   }
 
+  @Delete(':code/epics/:epicId')
+  @HttpCode(204)
+  async deleteEpic(@Param('epicId') epicId: string) {
+    await this.svc.deleteEpic(epicId);
+  }
+
   @Get(':code/members')
   getMembers(@Param('code') code: string) {
     return this.svc.getMembers(code);

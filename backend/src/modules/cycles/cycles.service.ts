@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CyclesRepository } from './cycles.repository';
 import type { CreateCycleDto } from './dto/create-cycle.dto';
+import type { UpdateCycleDto } from './dto/update-cycle.dto';
 
 @Injectable()
 export class CyclesService {
@@ -30,5 +31,17 @@ export class CyclesService {
 
   addEpicTasks(cycleId: string, epicId: string) {
     return this.repo.addEpicTasks(cycleId, epicId);
+  }
+
+  async update(id: string, dto: UpdateCycleDto) {
+    const cycle = await this.repo.update(id, dto);
+    if (!cycle) throw new NotFoundException('Cycle no encontrado');
+    return cycle;
+  }
+
+  async delete(id: string) {
+    const cycle = await this.repo.findById(id);
+    if (!cycle) throw new NotFoundException('Cycle no encontrado');
+    await this.repo.delete(id);
   }
 }

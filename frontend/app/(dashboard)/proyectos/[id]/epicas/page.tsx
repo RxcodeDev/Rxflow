@@ -2,7 +2,8 @@
 
 import { useState, useEffect, use, useCallback } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { ProjectSummary, EpicItem, TaskItem, ApiWrapped } from '@/types/api.types';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -316,6 +317,8 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
   const [editChildIds,   setEditChildIds]   = useState<Set<string>>(new Set());
   const [editSaving,     setEditSaving]     = useState(false);
   const [editSaveError,  setEditSaveError]  = useState('');
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteLoading,     setDeleteLoading]     = useState(false);
 
   /* ── Create task modal ── */
   const [taskModalOpen,   setTaskModalOpen]   = useState(false);
@@ -456,6 +459,22 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
       setEditSaveError(err instanceof Error ? err.message : 'Error al guardar la épica');
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  async function handleDeleteEpic() {
+    if (!editingEpic) return;
+    setDeleteLoading(true);
+    try {
+      await apiDelete(`/projects/${code}/epics/${editingEpic.id}`);
+      setEpics(prev => prev.filter(e => e.id !== editingEpic.id));
+      setConfirmDeleteOpen(false);
+      setEditingEpic(null);
+    } catch (err) {
+      setEditSaveError(err instanceof Error ? err.message : 'Error al eliminar la épica');
+      setConfirmDeleteOpen(false);
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -643,11 +662,11 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
             <select
               id="ep-parent"
               value={epicParentId}
-              onChange={(e) => setEpicParentId(e.target.value)}
+              onChange={(e) => { setEpicParentId(e.target.value); setEpicChildIds(prev => { const next = new Set(prev); next.delete(e.target.value); return next; }); }}
               className={fieldCls}
             >
               <option value="">— Sin épica padre —</option>
-              {epics.map(ep => (
+              {epics.filter(ep => !epicChildIds.has(ep.id)).map(ep => (
                 <option key={ep.id} value={ep.id}>{ep.name}</option>
               ))}
             </select>
@@ -662,7 +681,7 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
                 Estas épicas quedarán como sub-épicas de la nueva.
               </p>
               <div className="max-h-36 overflow-y-auto border border-[var(--c-border)] rounded-lg divide-y divide-[var(--c-line)]">
-                {epics.filter(e => !e.parent_epic_id).map(ep => (
+                {epics.filter(e => !e.parent_epic_id && e.id !== epicParentId).map(ep => (
                   <label
                     key={ep.id}
                     className="flex items-center gap-2.5 px-3 py-2 hover:bg-[var(--c-hover)] cursor-pointer select-none"
@@ -696,7 +715,11 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
       </Modal>
 
       {/* ── Edit epic modal ─────────────────────────────── */}
-      <Modal open={!!editingEpic} onClose={() => setEditingEpic(null)} title="Editar épica">
+      <Modal
+        open={!!editingEpic}
+        onClose={() => setEditingEpic(null)}
+        title="Editar épica"
+      >
         <form onSubmit={handleUpdateEpic} noValidate className="flex flex-col gap-4">
           <Input
             id="edit-ep-name"
@@ -739,6 +762,7 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
             </select>
           </div>
           {/* Parent epic */}
+          {editingEpic && parentOptions(editingEpic.id).filter(ep => !editChildIds.has(ep.id)).length > 0 && (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="edit-ep-parent" className="text-[0.75rem] font-semibold text-[var(--c-text-sub)] tracking-[0.02em]">
               Épica padre (opcional)
@@ -746,11 +770,11 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
             <select
               id="edit-ep-parent"
               value={editParentId}
-              onChange={(e) => setEditParentId(e.target.value)}
+              onChange={(e) => { setEditParentId(e.target.value); setEditChildIds(prev => { const next = new Set(prev); next.delete(e.target.value); return next; }); }}
               className={fieldCls}
             >
               <option value="">— Sin épica padre —</option>
-              {editingEpic && parentOptions(editingEpic.id).map(ep => (
+              {editingEpic && parentOptions(editingEpic.id).filter(ep => !editChildIds.has(ep.id)).map(ep => (
                 <option key={ep.id} value={ep.id}>{ep.name}</option>
               ))}
             </select>
@@ -760,11 +784,13 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
               </p>
             )}
           </div>
+          )}
           {/* Child epics picker */}
           {editingEpic && (() => {
-            // Epics eligible to be children: no parent OR already a child of this epic
+            // Epics eligible to be children: no parent OR already a child of this epic; never the selected parent
             const eligible = epics.filter(e =>
               e.id !== editingEpic.id &&
+              e.id !== editParentId &&
               !getDescendantIds(editingEpic.id, epics).has(e.id) &&
               (e.parent_epic_id === null || e.parent_epic_id === editingEpic.id),
             );
@@ -805,12 +831,29 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
             );
           })()}
           {editSaveError && <p className="text-[0.75rem] text-[var(--c-danger)]">{editSaveError}</p>}
+          <button
+            type="button"
+            onClick={() => setConfirmDeleteOpen(true)}
+            className="w-full py-2 rounded-lg text-[0.8rem] font-semibold text-white bg-[var(--c-danger)] hover:opacity-90 transition-opacity cursor-pointer border-none font-[inherit]"
+          >
+            Eliminar épica
+          </button>
           <div className="flex items-center justify-end gap-2 pt-3 mt-1 border-t border-[var(--c-border)]">
             <Button type="button" variant="ghost" style={{ width: 'auto' }} onClick={() => setEditingEpic(null)}>Cancelar</Button>
             <Button type="submit" variant="primary" style={{ width: 'auto' }} loading={editSaving}>Guardar cambios</Button>
           </div>
         </form>
       </Modal>
+
+      {/* ── Delete epic confirm ─────────────────────────── */}
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        title="¿Eliminar épica?"
+        message={`"${editingEpic?.name}" será eliminada permanentemente. Sus sub-épicas quedarán como épicas raíz.`}
+        confirmLabel={deleteLoading ? 'Eliminando…' : 'Eliminar'}
+        onConfirm={handleDeleteEpic}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
 
       {/* ── Create task modal ───────────────────────────── */}
       <TaskCreateModal
