@@ -5,6 +5,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { MemberItem, ApiWrapped } from '@/types/api.types';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { playDelete, playSuccess } from '@/hooks/useSound';
+import { useAuth } from '@/hooks/useAuth';
 
 const STATUS_COLOR: Record<string, string> = {
   online:  'bg-green-400',
@@ -108,7 +109,7 @@ function EditMemberModal({
 }: {
   member: MemberItem;
   onClose: () => void;
-  onSaved: (updated: MemberItem) => void;
+  onSaved: (saved: { id: string; name: string; email: string }) => void;
 }) {
   const [name,       setName]       = useState(member.name);
   const [email,      setEmail]      = useState(member.email);
@@ -129,13 +130,13 @@ function EditMemberModal({
     if (!email.trim()) { setError('El correo es requerido'); return; }
     setSubmitting(true);
     try {
-      const res = await apiPatch<ApiWrapped<MemberItem>>(`/users/${member.id}`, {
+      await apiPatch<ApiWrapped<MemberItem>>(`/users/${member.id}`, {
         name: name.trim(),
         email: email.trim(),
         role,
       });
       playSuccess();
-      onSaved(res.data);
+      onSaved({ id: member.id, name: name.trim(), email: email.trim() });
       onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al actualizar el miembro');
@@ -358,6 +359,7 @@ export default function MiembrosPage() {
   const [showAdd,        setShowAdd]        = useState(false);
   const [editMember,     setEditMember]     = useState<MemberItem | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const { user: authUser, updateProfile } = useAuth();
 
   function loadMembers() {
     setLoading(true);
@@ -372,15 +374,20 @@ export default function MiembrosPage() {
   async function handleDelete(id: string) {
     try {
       await apiDelete(`/users/${id}`);
-      setMembers((prev) => prev.filter((m) => m.id !== id));
       playDelete();
+      loadMembers();
     } catch (err) {
       console.error(err);
     }
   }
 
-  function handleSaved(updated: MemberItem) {
-    setMembers((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+  async function handleSaved(saved: { id: string; name: string; email: string }) {
+    // If the edited member is the current logged-in user, update sidebar immediately
+    if (authUser && saved.id === authUser.id) {
+      await updateProfile({ name: saved.name, email: saved.email }).catch(() => {});
+    }
+    // Reload full list so effective_role is recalculated from server
+    loadMembers();
   }
 
   return (
@@ -425,14 +432,20 @@ export default function MiembrosPage() {
             <div key={m.id} className="border border-[var(--c-border)] rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-[var(--c-avatar-bg)] text-[var(--c-avatar-fg)] font-semibold text-sm flex items-center justify-center">
-                    {m.initials}
+                  <div
+                    className="w-10 h-10 rounded-full font-semibold text-sm flex items-center justify-center overflow-hidden"
+                    style={!m.avatar_url && m.avatar_color ? { background: m.avatar_color } : { background: 'var(--c-hover)' }}
+                  >
+                    {m.avatar_url
+                      ? <img src={m.avatar_url} alt={m.name} className="w-full h-full object-cover" />
+                      : <span style={m.avatar_color ? { color: '#fff' } : { color: 'var(--c-text-sub)' }}>{m.initials}</span>
+                    }
                   </div>
                   <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[var(--c-bg)] ${STATUS_COLOR[m.presence_status] ?? STATUS_COLOR.offline}`} />
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-[var(--c-text)]">{m.name}</p>
-                  <p className="text-[12px] text-[var(--c-text-sub)] capitalize">{m.role}</p>
+                  <p className="text-[12px] text-[var(--c-text-sub)]">{m.effective_role ?? m.role}</p>
                 </div>
                 {m.last_seen_at && (
                   <span className="ml-auto text-[11px] text-[var(--c-muted)]">
@@ -471,8 +484,14 @@ export default function MiembrosPage() {
                   <td className="py-3 pr-6">
                     <div className="flex items-center gap-3">
                       <div className="relative shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-[var(--c-avatar-bg)] text-[var(--c-avatar-fg)] text-[11px] font-semibold flex items-center justify-center">
-                          {m.initials}
+                        <div
+                          className="w-8 h-8 rounded-full text-[11px] font-semibold flex items-center justify-center overflow-hidden"
+                          style={!m.avatar_url && m.avatar_color ? { background: m.avatar_color } : { background: 'var(--c-hover)' }}
+                        >
+                          {m.avatar_url
+                            ? <img src={m.avatar_url} alt={m.name} className="w-full h-full object-cover" />
+                            : <span style={m.avatar_color ? { color: '#fff' } : { color: 'var(--c-text-sub)' }}>{m.initials}</span>
+                          }
                         </div>
                         <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-2 border-[var(--c-bg)] ${STATUS_COLOR[m.presence_status] ?? STATUS_COLOR.offline}`} />
                       </div>
@@ -482,7 +501,7 @@ export default function MiembrosPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 pr-6 text-[13px] text-[var(--c-text-sub)] whitespace-nowrap capitalize">{m.role}</td>
+                  <td className="py-3 pr-6 text-[13px] text-[var(--c-text-sub)] whitespace-nowrap">{m.effective_role ?? m.role}</td>
                   <td className="py-3 pr-6">
                     <div className="flex flex-wrap gap-1">
                       {(m.projects as string[]).map((p) => (
@@ -494,7 +513,7 @@ export default function MiembrosPage() {
                   <td className="py-3 pr-6 text-[13px] text-[var(--c-muted)] whitespace-nowrap">
                     {m.last_seen_at
                       ? new Date(m.last_seen_at).toLocaleString('es', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : m.presence_status}
+                      : m.presence_status === 'online' ? 'En línea' : 'Sin actividad'}
                   </td>
                   <td className="py-3">
                     <MemberMenu memberId={m.id} member={m} onRequestDelete={setPendingDeleteId} onRequestEdit={setEditMember} />

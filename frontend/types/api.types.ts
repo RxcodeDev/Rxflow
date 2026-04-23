@@ -63,6 +63,7 @@ export interface MemberItem {
   name: string;
   email: string;
   role: string;
+  effective_role: string;
   initials: string;
   avatar_url: string | null;
   avatar_color: string | null;

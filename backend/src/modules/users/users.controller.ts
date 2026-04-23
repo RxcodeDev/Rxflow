@@ -38,10 +38,19 @@ export class UsersController {
     await this.svc.deactivate(id);
   }
 
+  @Patch('me/presence')
+  @HttpCode(204)
+  async updatePresence(
+    @CurrentUser() user: SafeUser,
+    @Body() body: { status: 'online' | 'away' | 'offline' },
+  ) {
+    await this.svc.updatePresence(user.id, body.status);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; email?: string; avatar_url?: string | null; avatar_color?: string | null },
+    @Body() body: { name?: string; email?: string; role?: string; avatar_url?: string | null; avatar_color?: string | null },
   ) {
     return this.svc.update(id, body);
   }

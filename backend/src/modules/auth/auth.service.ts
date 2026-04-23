@@ -44,6 +44,10 @@ export class AuthService {
 
     const { password_hash: _, ...user } = userWithHash;
     const access_token = this.sign({ sub: user.id, email: user.email, name: user.name, role: user.role });
+
+    // Mark user as online
+    await this.usersRepo.updatePresence(user.id, 'online');
+
     return { user, access_token };
   }
 

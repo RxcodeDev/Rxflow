@@ -3,6 +3,7 @@ import Sidebar from '@/components/layouts/Sidebar';
 import Navbar from '@/components/layouts/Navbar';
 import CreateTaskModal from '@/components/features/tasks/CreateTaskModal';
 import TaskDrawer from '@/components/features/tasks/TaskDrawer';
+import PresenceHeartbeat from '@/components/layouts/PresenceHeartbeat';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -28,6 +29,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <CreateTaskModal />
       {/* Global drawer — disponible desde cualquier página del dashboard */}
       <TaskDrawer />
+      {/* Presence heartbeat — updates online status every 2 minutes */}
+      <PresenceHeartbeat />
     </UIProvider>
   );
 }

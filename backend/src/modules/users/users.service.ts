@@ -80,7 +80,7 @@ export class UsersService {
     ).join('');
   }
 
-  async update(id: string, dto: { name?: string; email?: string; avatar_url?: string | null; avatar_color?: string | null }) {
+  async update(id: string, dto: { name?: string; email?: string; role?: string; avatar_url?: string | null; avatar_color?: string | null }) {
     await this.findById(id);
     if (dto.email) {
       const existing = await this.repo.findByEmail(dto.email);
@@ -89,7 +89,7 @@ export class UsersService {
     const initials = dto.name
       ? dto.name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
       : undefined;
-    const updated = await this.repo.update(id, { name: dto.name, email: dto.email, avatar_url: dto.avatar_url, avatar_color: dto.avatar_color, initials });
+    const updated = await this.repo.update(id, { name: dto.name, email: dto.email, role: dto.role, avatar_url: dto.avatar_url, avatar_color: dto.avatar_color, initials });
     if (!updated) throw new NotFoundException('Usuario no encontrado');
     return updated;
   }
@@ -101,5 +101,9 @@ export class UsersService {
     if (!valid) throw new ConflictException('La contraseña actual no es correcta');
     const newHash = await bcrypt.hash(dto.newPassword, 10);
     await this.repo.changePassword(id, newHash);
+  }
+
+  async updatePresence(id: string, status: 'online' | 'away' | 'offline'): Promise<void> {
+    await this.repo.updatePresence(id, status);
   }
 }

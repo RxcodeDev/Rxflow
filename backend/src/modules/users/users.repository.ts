@@ -96,12 +96,25 @@ export class UsersRepository {
       SELECT
         ${SAFE_COLS},
         COALESCE(
-          (SELECT json_agg(p.name ORDER BY p.name)
-           FROM project_members pm
-           JOIN projects p ON p.id = pm.project_id
-           WHERE pm.user_id = u.id), '[]'::json
+          (SELECT json_agg(DISTINCT p.name ORDER BY p.name)
+           FROM projects p
+           WHERE p.id IN (
+             SELECT pm.project_id FROM project_members pm WHERE pm.user_id = u.id
+             UNION
+             SELECT p2.id FROM projects p2 WHERE p2.created_by = u.id
+             UNION
+             SELECT t.project_id FROM tasks t WHERE t.assignee_id = u.id AND t.project_id IS NOT NULL
+           )), '[]'::json
         )              AS projects,
-        COALESCE(tc.open_count, 0)::int AS tasks_open
+        COALESCE(tc.open_count, 0)::int AS tasks_open,
+        CASE
+          WHEN EXISTS (
+            SELECT 1 FROM project_members pm2 WHERE pm2.user_id = u.id AND pm2.role = 'owner'
+          ) OR EXISTS (
+            SELECT 1 FROM projects p3 WHERE p3.created_by = u.id
+          ) THEN 'Owner'
+          ELSE INITCAP(u.role)
+        END AS effective_role
       FROM users u
       LEFT JOIN LATERAL (
         SELECT COUNT(*) AS open_count
