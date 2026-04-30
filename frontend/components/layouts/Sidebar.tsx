@@ -230,12 +230,12 @@ function projectSubitems(methodology: string, extraViews: string[]): { label: st
     shape_up: ['lista'],
   };
   const LABELS: Record<string, string> = {
-    board: 'Board', lista: 'Lista', backlog: 'Backlog', epicas: 'Épicas',
+    board: 'Board', lista: 'Lista', backlog: 'Backlog', epicas: 'Épicas', cycles: 'Cycles',
   };
-  const ORDER = ['board', 'lista', 'backlog', 'epicas'];
+  const ORDER = ['board', 'lista', 'backlog', 'epicas', 'cycles'];
 
-  const defaults  = DEFAULTS[m] ?? ['board', 'lista'];
-  const merged    = [...new Set([...defaults, ...(extraViews ?? [])])];
+  const defaults  = DEFAULTS[m] ?? ['board', 'lista', 'cycles'];
+  const merged    = [...new Set([...defaults, ...(extraViews ?? []), 'cycles'])];
   const ordered   = ORDER.filter((v) => merged.includes(v));
   return ordered.map((suffix) => ({ label: LABELS[suffix] ?? suffix, suffix }));
 }
@@ -286,7 +286,6 @@ export default function Sidebar({
       label: t('sectionTeam'),
       items: [
         { label: t('navProjects'), href: '/proyectos', icon: <LayersSvg /> },
-        { label: t('navCycles'),   href: '/cycles',    icon: <RefreshCwSvg /> },
         { label: t('navMembers'),  href: '/miembros',  icon: <UsersSvg /> },
       ],
     },

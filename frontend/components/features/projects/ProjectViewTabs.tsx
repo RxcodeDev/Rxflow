@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 
-type View = 'board' | 'lista' | 'epicas' | 'backlog';
+type View = 'board' | 'lista' | 'epicas' | 'backlog' | 'cycles';
 
 const TABS: { key: View; label: string }[] = [
   { key: 'board',   label: 'Board'   },
   { key: 'lista',   label: 'Lista'   },
   { key: 'epicas',  label: 'Épicas'  },
   { key: 'backlog', label: 'Backlog' },
+  { key: 'cycles',  label: 'Cycles'  },
 ];
 
 interface ProjectViewTabsProps {
