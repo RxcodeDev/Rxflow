@@ -32,6 +32,7 @@ export class TasksService {
     description?: string;
     status?: string;
     priority?: string;
+    assigneeIds?: string[] | null;
     assigneeId?: string | null;
     epicId?: string | null;
     cycleId?: string | null;
@@ -58,6 +59,7 @@ export class TasksService {
     title: string;
     priority: string;
     status: string;
+    assigneeIds?: string[];
     assigneeId?: string | null;
     epicId?: string | null;
     cycleId?: string | null;

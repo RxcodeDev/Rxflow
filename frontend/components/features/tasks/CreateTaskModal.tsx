@@ -175,7 +175,7 @@ function TaskSubtaskForm({
   const [epicId,       setEpicId]       = useState('');
   const [parentTaskId, setParentTaskId] = useState('');
   const [priority,     setPriority]     = useState<Priority>('Media');
-  const [assigneeId,   setAssigneeId]   = useState('');
+  const [assigneeIds,  setAssigneeIds]  = useState<string[]>([]);
   const [dueDate,      setDueDate]      = useState('');
   const [submitting,   setSubmitting]   = useState(false);
   const [submitError,  setSubmitError]  = useState('');
@@ -238,7 +238,7 @@ function TaskSubtaskForm({
         title: title.trim(),
         priority: PRIORITY_MAP[priority],
         status: 'backlog',
-        assigneeId:   assigneeId   || null,
+        assigneeIds: assigneeIds.length > 0 ? assigneeIds : [],
         epicId:       epicId       || null,
         parentTaskId: context === 'subtask' ? (parentTaskId || null) : null,
         dueDate:      dueDate      || null,
@@ -337,19 +337,73 @@ function TaskSubtaskForm({
           onChange={setPriority}
         />
 
-        {/* Asignar a */}
-        <Field label="Asignar a" htmlFor="ct-assignee">
-          <NativeSelect
-            id="ct-assignee"
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
-            disabled={loadingBase}
-          >
-            <option value="">Sin asignar</option>
-            {members.map(m => (
-              <option key={m.id} value={m.id}>{m.name} ({m.initials})</option>
-            ))}
-          </NativeSelect>
+        {/* Asignar a — multi-select */}
+        <Field label="Asignar a">
+          <div className="flex flex-col gap-2">
+            {/* Selected pills */}
+            {assigneeIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {assigneeIds.map(id => {
+                  const m = members.find(x => x.id === id);
+                  if (!m) return null;
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1.5 text-[12px] font-medium rounded-full border border-[var(--c-border)] px-2.5 py-1 bg-[var(--c-hover)] text-[var(--c-text)]">
+                      <span className="w-4 h-4 rounded-full bg-[var(--c-avatar-bg)] text-[var(--c-avatar-fg)] text-[9px] font-bold flex items-center justify-center shrink-0">{m.initials}</span>
+                      {m.name}
+                      <button
+                        type="button"
+                        aria-label={`Quitar ${m.name}`}
+                        onClick={() => setAssigneeIds(prev => prev.filter(x => x !== id))}
+                        className="text-[var(--c-muted)] hover:text-[var(--c-danger)] transition-colors bg-transparent border-none cursor-pointer p-0 leading-none"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {/* Member list */}
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAssigneeIds([])}
+                className={
+                  'text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer font-[inherit] ' +
+                  (assigneeIds.length === 0
+                    ? 'border-[var(--c-text)] bg-[var(--c-hover)] text-[var(--c-text)] font-semibold'
+                    : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)]')
+                }
+              >
+                Sin asignar
+              </button>
+              {members.map(m => {
+                const selected = assigneeIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setAssigneeIds(prev =>
+                      selected ? prev.filter(x => x !== m.id) : [...prev, m.id]
+                    )}
+                    className={
+                      'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer font-[inherit] ' +
+                      (selected
+                        ? 'border-[var(--c-text)] bg-[var(--c-hover)] text-[var(--c-text)] font-semibold'
+                        : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)]')
+                    }
+                    disabled={loadingBase}
+                  >
+                    <span className="w-4 h-4 rounded-full bg-[var(--c-avatar-bg)] text-[var(--c-avatar-fg)] text-[9px] font-bold flex items-center justify-center shrink-0">{m.initials}</span>
+                    {m.name}
+                    {selected && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </Field>
 
         {/* Fecha límite */}

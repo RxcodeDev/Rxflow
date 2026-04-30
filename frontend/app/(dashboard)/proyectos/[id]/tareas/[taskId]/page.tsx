@@ -6,7 +6,7 @@ import { apiGet, apiPost, apiPatch } from '@/lib/api';
 import { useUIDispatch } from '@/store/UIContext';
 import { bumpTasks, openCreateModal } from '@/store/slices/uiSlice';
 import {
-  StatusPill, PriorityPill, AssigneePill,
+  StatusPill, PriorityPill, AssigneesPill,
   DrawerAvatar, STATUS_META, PRIO_META, timeAgo,
 } from '@/components/features/tasks/TaskDrawer';
 import type { MemberItem, ApiWrapped } from '@/types/api.types';
@@ -24,6 +24,7 @@ interface TaskDetail {
   assignee_id: string | null;
   assignee_initials: string | null;
   assignee_name: string | null;
+  assignees: { id: string; name: string; initials: string; avatar_color: string | null; avatar_url?: string | null }[];
   creator_initials: string;
   creator_name: string;
   project_code: string;
@@ -482,17 +483,19 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
                 />
               </PropRow>
 
-              <PropRow label="Asignado">
-                <AssigneePill
-                  assigneeId={task.assignee_id}
-                  assigneeName={task.assignee_name}
-                  assigneeInitials={task.assignee_initials}
+              <PropRow label="Asignados">
+                <AssigneesPill
+                  assignees={task.assignees ?? []}
                   users={users}
-                  onChange={(uid) => {
-                    const u = users.find((x) => x.id === uid);
+                  onChange={(uids) => {
+                    const u0 = users.find(x => x.id === uids[0]);
+                    const newAssignees = uids.map(uid => {
+                      const u = users.find(x => x.id === uid);
+                      return { id: uid, name: u?.name ?? '', initials: u?.initials ?? '', avatar_color: u?.avatarColor ?? null, avatar_url: u?.avatarUrl ?? null };
+                    });
                     patchTask(
-                      { assignee_id: uid, assignee_name: u?.name ?? null, assignee_initials: u?.initials ?? null },
-                      { assigneeId: uid },
+                      { assignees: newAssignees, assignee_id: uids[0] ?? null, assignee_name: u0?.name ?? null, assignee_initials: u0?.initials ?? null },
+                      { assigneeIds: uids },
                     );
                   }}
                 />

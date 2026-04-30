@@ -11,6 +11,8 @@ interface CreateTaskDto {
   title: string;
   priority?: string;
   status?: string;
+  assigneeIds?: string[];
+  /** @deprecated use assigneeIds */
   assigneeId?: string;
   epicId?: string;
   cycleId?: string;
@@ -45,6 +47,8 @@ export class TasksController {
       description?: string;
       status?: string;
       priority?: string;
+      assigneeIds?: string[] | null;
+      /** @deprecated use assigneeIds */
       assigneeId?: string | null;
       epicId?: string | null;
       cycleId?: string | null;
@@ -86,7 +90,7 @@ export class TasksController {
       title: dto.title,
       priority: dto.priority ?? 'media',
       status: dto.status ?? 'backlog',
-      assigneeId: dto.assigneeId ?? null,
+      assigneeIds: dto.assigneeIds?.length ? dto.assigneeIds : dto.assigneeId ? [dto.assigneeId] : [],
       epicId: dto.epicId ?? null,
       cycleId: dto.cycleId ?? null,
       parentTaskId: dto.parentTaskId ?? null,

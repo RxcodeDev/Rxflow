@@ -18,6 +18,13 @@ export interface Task {
   updated_at: Date;
 }
 
+export interface AssigneeRef {
+  id: string;
+  name: string;
+  initials: string;
+  avatar_color: string | null;
+}
+
 export interface TaskItem {
   id: string;
   sequential_id: number;
@@ -29,7 +36,10 @@ export interface TaskItem {
   status: string;
   epic_id: string | null;
   epic_name: string | null;
+  /** @deprecated Use `assignees` — kept for backward-compat display */
   assignee_id: string | null;
+  /** @deprecated Use `assignees` — kept for backward-compat display */
   assignee_initials: string | null;
+  assignees: AssigneeRef[];
   due_date: Date | null;
 }

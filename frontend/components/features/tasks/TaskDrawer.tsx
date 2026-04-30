@@ -24,6 +24,7 @@ interface TaskDetail {
   assignee_name: string | null;
   assignee_avatar_url: string | null;
   assignee_avatar_color: string | null;
+  assignees: { id: string; name: string; initials: string; avatar_color: string | null; avatar_url?: string | null }[];
   creator_initials: string;
   creator_name: string;
   creator_avatar_url: string | null;
@@ -241,22 +242,19 @@ export function PriorityPill({ value, onChange }: { value: string; onChange: (v:
   );
 }
 
-/* ── AssigneePill ───────────────────────────────────── */
-export function AssigneePill({
-  assigneeId, assigneeName, assigneeInitials, assigneeAvatarUrl, assigneeAvatarColor, users, onChange,
+/* ── AssigneesPill (multi) ──────────────────────────── */
+export function AssigneesPill({
+  assignees, users, onChange,
 }: {
-  assigneeId: string | null;
-  assigneeName: string | null;
-  assigneeInitials: string | null;
-  assigneeAvatarUrl?: string | null;
-  assigneeAvatarColor?: string | null;
+  assignees: { id: string; name: string; initials: string; avatar_color?: string | null; avatar_url?: string | null }[];
   users: UserOpt[];
-  onChange: (id: string | null) => void;
+  onChange: (ids: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos]   = useState({ top: 0, left: 0, width: 0 });
+  const [pos, setPos]   = useState({ top: 0, left: 0, minWidth: 0 });
   const btnRef  = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const ids = assignees.map(a => a.id);
 
   useEffect(() => {
     if (!open) return;
@@ -272,39 +270,68 @@ export function AssigneePill({
     e.stopPropagation();
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+      setPos({ top: r.bottom + 4, left: r.left, minWidth: Math.max(r.width, 200) });
     }
     setOpen((v) => !v);
   }
 
+  function toggle(uid: string) {
+    const next = ids.includes(uid) ? ids.filter(x => x !== uid) : [...ids, uid];
+    onChange(next);
+  }
+
+  const label = assignees.length === 0
+    ? 'Sin asignar'
+    : assignees.length === 1
+      ? assignees[0].name
+      : `${assignees.length} asignados`;
+
   return (
     <>
       <button ref={btnRef} type="button" onClick={handleOpen} className={s.propPill}>
-        {assigneeInitials
-          ? <DrawerAvatar initials={assigneeInitials} avatarUrl={assigneeAvatarUrl} avatarColor={assigneeAvatarColor} size={18} />
-          : <span className={s.propDot} style={{ background: 'var(--c-border)' }} aria-hidden="true" />
-        }
-        <span className={s.propPillText}>{assigneeName ?? 'Sin asignar'}</span>
+        {assignees.length === 0 ? (
+          <span className={s.propDot} style={{ background: 'var(--c-border)' }} aria-hidden="true" />
+        ) : assignees.length === 1 ? (
+          <DrawerAvatar initials={assignees[0].initials} avatarUrl={assignees[0].avatar_url} avatarColor={assignees[0].avatar_color} size={18} />
+        ) : (
+          <div style={{ display: 'flex', marginRight: 2 }}>
+            {assignees.slice(0, 3).map((a, i) => (
+              <div key={a.id} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: 3 - i }}>
+                <DrawerAvatar initials={a.initials} avatarUrl={a.avatar_url} avatarColor={a.avatar_color} size={18} />
+              </div>
+            ))}
+          </div>
+        )}
+        <span className={s.propPillText}>{label}</span>
         <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
           <path d="M2 3.5l3 3 3-3" />
         </svg>
       </button>
       {open && (
-        <div ref={menuRef} className={s.propMenu} style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}>
+        <div ref={menuRef} className={s.propMenu}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.minWidth, zIndex: 9999 }}>
           <button type="button"
-            className={`${s.propMenuItem} ${!assigneeId ? s.propMenuItemActive : ''}`}
-            onClick={() => { setOpen(false); onChange(null); }}>
+            className={`${s.propMenuItem} ${ids.length === 0 ? s.propMenuItemActive : ''}`}
+            onClick={() => { onChange([]); }}>
             <span className={s.propDot} style={{ background: 'var(--c-muted)' }} aria-hidden="true" />
             Sin asignar
           </button>
-          {users.map((u) => (
-            <button key={u.id} type="button"
-              className={`${s.propMenuItem} ${u.id === assigneeId ? s.propMenuItemActive : ''}`}
-              onClick={() => { setOpen(false); onChange(u.id); }}>
-              <DrawerAvatar initials={u.initials} avatarUrl={u.avatarUrl} avatarColor={u.avatarColor} size={20} />
-              {u.name}
-            </button>
-          ))}
+          {users.map((u) => {
+            const sel = ids.includes(u.id);
+            return (
+              <button key={u.id} type="button"
+                className={`${s.propMenuItem} ${sel ? s.propMenuItemActive : ''}`}
+                onClick={() => toggle(u.id)}>
+                <DrawerAvatar initials={u.initials} avatarUrl={u.avatarUrl} avatarColor={u.avatarColor} size={20} />
+                <span style={{ flex: 1 }}>{u.name}</span>
+                {sel && (
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </>
@@ -655,19 +682,25 @@ export default function TaskDrawer() {
                 </div>
 
                 <div className={s.propCell}>
-                  <span className={s.propCellLabel}>Asignado</span>
-                  <AssigneePill
-                    assigneeId={task.assignee_id}
-                    assigneeName={task.assignee_name}
-                    assigneeInitials={task.assignee_initials}
-                    assigneeAvatarUrl={users.find(u => u.id === task.assignee_id)?.avatarUrl ?? task.assignee_avatar_url}
-                    assigneeAvatarColor={users.find(u => u.id === task.assignee_id)?.avatarColor ?? task.assignee_avatar_color}
+                  <span className={s.propCellLabel}>Asignados</span>
+                  <AssigneesPill
+                    assignees={task.assignees ?? []}
                     users={users}
-                    onChange={(uid) => {
-                      const u = users.find((x) => x.id === uid);
+                    onChange={(uids) => {
+                      const newAssignees = uids.map(uid => {
+                        const u = users.find(x => x.id === uid);
+                        return { id: uid, name: u?.name ?? '', initials: u?.initials ?? '', avatar_color: u?.avatarColor ?? null, avatar_url: u?.avatarUrl ?? null };
+                      });
                       patchTask(
-                        { assignee_id: uid, assignee_name: u?.name ?? null, assignee_initials: u?.initials ?? null, assignee_avatar_url: u?.avatarUrl ?? null, assignee_avatar_color: u?.avatarColor ?? null },
-                        { assigneeId: uid },
+                        {
+                          assignees: newAssignees,
+                          assignee_id: uids[0] ?? null,
+                          assignee_name: newAssignees[0]?.name ?? null,
+                          assignee_initials: newAssignees[0]?.initials ?? null,
+                          assignee_avatar_url: newAssignees[0]?.avatar_url ?? null,
+                          assignee_avatar_color: newAssignees[0]?.avatar_color ?? null,
+                        },
+                        { assigneeIds: uids },
                       );
                     }}
                   />

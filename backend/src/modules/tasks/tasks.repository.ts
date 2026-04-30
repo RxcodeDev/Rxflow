@@ -3,12 +3,41 @@ import { getPool } from '../../config/database.config';
 import type { TaskItem } from './entities/task.entity';
 import { NotificationsRepository } from '../notifications/notifications.repository';
 
+/** Subquery that returns the `assignees` JSON array for a task */
+const ASSIGNEES_SUBQ = `
+  COALESCE((
+    SELECT json_agg(json_build_object(
+             'id',           ua.id,
+             'name',         ua.name,
+             'initials',     ua.initials,
+             'avatar_color', ua.avatar_color
+           ) ORDER BY ta.assigned_at)
+    FROM task_assignees ta
+    JOIN users ua ON ua.id = ta.user_id
+    WHERE ta.task_id = t.id
+  ), '[]'::json)`;
+
 @Injectable()
 export class TasksRepository {
   constructor(private readonly notificationsRepo: NotificationsRepository) {}
 
   private get pool() {
     return getPool();
+  }
+
+  /** Replace all assignees for a task inside an existing transaction client (or pool) */
+  private async replaceAssignees(
+    client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+    taskId: string,
+    assigneeIds: string[],
+  ): Promise<void> {
+    await client.query('DELETE FROM task_assignees WHERE task_id = $1', [taskId]);
+    for (const uid of assigneeIds) {
+      await client.query(
+        'INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [taskId, uid],
+      );
+    }
   }
 
   async findByAssignee(userId: string): Promise<TaskItem[]> {
@@ -21,12 +50,13 @@ export class TasksRepository {
         t.title, t.priority, t.status,
         t.epic_id, e.name   AS epic_name,
         t.assignee_id, u.initials AS assignee_initials,
+        ${ASSIGNEES_SUBQ} AS assignees,
         t.due_date
       FROM tasks t
       JOIN  projects p ON p.id = t.project_id
       LEFT JOIN epics e ON e.id = t.epic_id
       LEFT JOIN users u ON u.id = t.assignee_id
-      WHERE t.assignee_id = $1
+      WHERE t.id IN (SELECT task_id FROM task_assignees WHERE user_id = $1)
         AND t.parent_task_id IS NULL
       ORDER BY
         CASE t.priority
@@ -50,6 +80,7 @@ export class TasksRepository {
         t.title, t.priority, t.status,
         t.epic_id, e.name   AS epic_name,
         t.assignee_id, u.initials AS assignee_initials,
+        ${ASSIGNEES_SUBQ} AS assignees,
         t.due_date
       FROM tasks t
       JOIN  projects p ON p.id = t.project_id
@@ -95,6 +126,7 @@ export class TasksRepository {
         t.title, t.priority, t.status,
         t.epic_id, e.name     AS epic_name,
         t.assignee_id, u.initials AS assignee_initials,
+        ${ASSIGNEES_SUBQ} AS assignees,
         t.due_date
       FROM tasks t
       JOIN  projects p ON p.id = t.project_id
@@ -123,6 +155,7 @@ export class TasksRepository {
         t.title, t.priority, t.status,
         t.epic_id, e.name     AS epic_name,
         t.assignee_id, u.initials AS assignee_initials,
+        ${ASSIGNEES_SUBQ} AS assignees,
         t.due_date
       FROM tasks t
       JOIN  projects p ON p.id = t.project_id
@@ -140,6 +173,8 @@ export class TasksRepository {
     title: string;
     priority: string;
     status: string;
+    assigneeIds?: string[];
+    /** @deprecated pass assigneeIds instead */
     assigneeId?: string | null;
     epicId?: string | null;
     cycleId?: string | null;
@@ -147,6 +182,14 @@ export class TasksRepository {
     dueDate?: string | null;
     createdBy: string;
   }): Promise<TaskItem> {
+    // Normalize: prefer assigneeIds, fall back to legacy single assigneeId
+    const ids = dto.assigneeIds?.length
+      ? dto.assigneeIds
+      : dto.assigneeId
+        ? [dto.assigneeId]
+        : [];
+    const primaryId = ids[0] ?? null;
+
     const { rows: [proj] } = await this.pool.query(
       'SELECT id FROM projects WHERE UPPER(code) = UPPER($1)',
       [dto.projectCode],
@@ -161,11 +204,14 @@ export class TasksRepository {
        RETURNING id`,
       [
         proj.id, dto.title, dto.priority.toLowerCase(), dto.status,
-        dto.assigneeId || null, dto.epicId || null,
+        primaryId, dto.epicId || null,
         dto.cycleId || null, dto.parentTaskId || null,
         dto.dueDate || null, dto.createdBy,
       ],
     );
+
+    // Insert into task_assignees
+    await this.replaceAssignees(this.pool, task.id, ids);
 
     const { rows: [full] } = await this.pool.query(`
       SELECT
@@ -175,6 +221,7 @@ export class TasksRepository {
         t.title, t.priority, t.status,
         t.epic_id, e.name AS epic_name,
         t.assignee_id, u.initials AS assignee_initials,
+        ${ASSIGNEES_SUBQ} AS assignees,
         t.due_date
       FROM tasks t
       JOIN projects p ON p.id = t.project_id
@@ -197,7 +244,11 @@ export class TasksRepository {
     description?: string;
     status?: string;
     priority?: string;
+    assigneeIds?: string[] | null;
+    /** @deprecated pass assigneeIds instead */
     assigneeId?: string | null;
+    epicId?: string | null;
+    cycleId?: string | null;
     dueDate?: string | null;
     blockedReason?: string | null;
   }): Promise<void> {
@@ -205,24 +256,39 @@ export class TasksRepository {
     const params: unknown[] = [];
     let idx = 1;
 
+    // Normalize assignees
+    const ids: string[] | null =
+      dto.assigneeIds !== undefined
+        ? (dto.assigneeIds ?? [])
+        : 'assigneeId' in dto
+          ? dto.assigneeId ? [dto.assigneeId] : []
+          : null;
+
+    const primaryId = ids !== null ? (ids[0] ?? null) : undefined;
+
     if (dto.title       !== undefined) { sets.push(`title = $${idx++}`);          params.push(dto.title); }
     if (dto.description !== undefined) { sets.push(`description = $${idx++}`);    params.push(dto.description || null); }
     if (dto.status      !== undefined) { sets.push(`status = $${idx++}`);         params.push(dto.status); }
     if (dto.priority    !== undefined) { sets.push(`priority = $${idx++}`);       params.push(dto.priority); }
-    if ('assigneeId'    in dto)        { sets.push(`assignee_id = $${idx++}`);    params.push(dto.assigneeId ?? null); }
+    if (primaryId       !== undefined) { sets.push(`assignee_id = $${idx++}`);    params.push(primaryId); }
     if ('epicId'        in dto)        { sets.push(`epic_id = $${idx++}`);        params.push(dto.epicId ?? null); }
     if ('cycleId'       in dto)        { sets.push(`cycle_id = $${idx++}`);       params.push(dto.cycleId ?? null); }
     if ('dueDate'       in dto)        { sets.push(`due_date = $${idx++}`);       params.push(dto.dueDate || null); }
     if ('blockedReason' in dto)        { sets.push(`blocked_reason = $${idx++}`); params.push(dto.blockedReason || null); }
 
-    if (sets.length === 0) return;
-    sets.push(`updated_at = NOW()`);
-    params.push(id);
+    if (sets.length > 0) {
+      sets.push(`updated_at = NOW()`);
+      params.push(id);
+      await this.pool.query(
+        `UPDATE tasks SET ${sets.join(', ')} WHERE id = $${idx}`,
+        params,
+      );
+    }
 
-    await this.pool.query(
-      `UPDATE tasks SET ${sets.join(', ')} WHERE id = $${idx}`,
-      params,
-    );
+    // Sync task_assignees if caller provided new assignee list
+    if (ids !== null) {
+      await this.replaceAssignees(this.pool, id, ids);
+    }
   }
 
   async updateAndLog(id: string, userId: string, dto: {
@@ -230,6 +296,8 @@ export class TasksRepository {
     description?: string;
     status?: string;
     priority?: string;
+    assigneeIds?: string[] | null;
+    /** @deprecated pass assigneeIds instead */
     assigneeId?: string | null;
     epicId?: string | null;
     cycleId?: string | null;
@@ -243,7 +311,10 @@ export class TasksRepository {
     if (dto.description !== undefined) actions.push(`actualizó la descripción`);
     if (dto.status      !== undefined) actions.push(`cambió el estado a "${dto.status}"`);
     if (dto.priority    !== undefined) actions.push(`cambió la prioridad a "${dto.priority}"`);
-    if ('assigneeId'    in dto)        actions.push(dto.assigneeId ? `asignó la tarea` : `removió la asignación`);
+    if (dto.assigneeIds !== undefined || 'assigneeId' in dto) {
+      const hasAssignee = (dto.assigneeIds?.length ?? 0) > 0 || !!dto.assigneeId;
+      actions.push(hasAssignee ? `actualizó los asignados` : `removió los asignados`);
+    }
     if ('epicId'        in dto)        actions.push(dto.epicId ? `asignó una épica` : `removió la épica`);
     if ('cycleId'       in dto)        actions.push(dto.cycleId ? `asignó un ciclo` : `removió el ciclo`);
     if ('dueDate'       in dto)        actions.push(dto.dueDate ? `cambió la fecha de entrega` : `removió la fecha de entrega`);
@@ -320,7 +391,19 @@ export class TasksRepository {
         u_c.avatar_url AS creator_avatar_url, u_c.avatar_color AS creator_avatar_color,
         p.code AS project_code, p.name AS project_name,
         t.epic_id, e.name AS epic_name,
-        t.cycle_id
+        t.cycle_id,
+        COALESCE((
+          SELECT json_agg(json_build_object(
+                   'id',           ua.id,
+                   'name',         ua.name,
+                   'initials',     ua.initials,
+                   'avatar_color', ua.avatar_color,
+                   'avatar_url',   ua.avatar_url
+                 ) ORDER BY ta.assigned_at)
+          FROM task_assignees ta
+          JOIN users ua ON ua.id = ta.user_id
+          WHERE ta.task_id = t.id
+        ), '[]'::json) AS assignees
       FROM tasks t
       JOIN  projects p  ON p.id = t.project_id
       LEFT JOIN users u_a ON u_a.id = t.assignee_id

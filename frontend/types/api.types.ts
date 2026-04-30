@@ -27,6 +27,14 @@ export interface ProjectSummary {
   active_cycle: string | null;
 }
 
+export interface TaskAssignee {
+  id: string;
+  name: string;
+  initials: string;
+  avatar_color: string | null;
+  avatar_url?: string | null;
+}
+
 export interface TaskItem {
   id: string;
   sequential_id: number;
@@ -38,8 +46,11 @@ export interface TaskItem {
   status: string;
   epic_id: string | null;
   epic_name: string | null;
+  /** @deprecated use `assignees[0]` — kept for backward-compat display */
   assignee_id: string | null;
+  /** @deprecated use `assignees[0]` — kept for backward-compat display */
   assignee_initials: string | null;
+  assignees: TaskAssignee[];
   due_date: string | null;
 }
 
