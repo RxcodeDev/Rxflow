@@ -11,6 +11,7 @@ import { closeCreateModal, bumpProjects } from '@/store/slices/uiSlice';
 import { apiGet, apiPost } from '@/lib/api';
 import type { ProjectSummary, MemberItem, TaskItem, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
 import { playSuccess, SOUND_DURATION_MS } from '@/hooks/useSound';
+import { useDebounce } from '@/hooks/useDebounce';
 
 /* ── Local types ─────────────────────────────────────── */
 interface EpicItem { id: string; name: string; status: string; }
@@ -531,37 +532,126 @@ const METHODOLOGY_MAP: Record<Methodology, string> = {
   'Shape Up': 'shape_up',
 };
 
+/* ── Helpers ─────────────────────────────────────────── */
+function generateCandidates(name: string): string[] {
+  const words = name.trim().toUpperCase().replace(/[^A-Z\s]/g, '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const initials = words.map((w) => w[0]).join('').slice(0, 4);
+  const first = words[0];
+  const set: string[] = [];
+  if (initials.length >= 2) set.push(initials);
+  if (first.length >= 3) set.push(first.slice(0, 3));
+  if (first.length >= 4) set.push(first.slice(0, 4));
+  // letter-only suffixes for collision avoidance (A–Z)
+  const base = (initials.length >= 2 ? initials : first).slice(0, 3);
+  for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') set.push((base + ch).slice(0, 4));
+  return [...new Set(set)].filter((c) => c.length >= 2);
+}
+
+async function findFreeCode(candidates: string[]): Promise<string | null> {
+  for (const candidate of candidates) {
+    try {
+      await apiGet(`/projects/${candidate.toLowerCase()}`);
+      // 200 → taken, try next
+    } catch {
+      // 4xx → free
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function ProjectForm({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const dispatch = useUIDispatch();
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [identifier, setIdentifier] = useState('');
+  const [identifierTouched, setIdentifierTouched] = useState(false);
+  const [identifierError, setIdentifierError] = useState('');
+  const [identifierChecking, setIdentifierChecking] = useState(false);
   const [description, setDescription] = useState('');
   const [methodology, setMethodology] = useState<Methodology>('Scrum');
   const [workspaceId, setWorkspaceId] = useState('');
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [allProjects, setAllProjects] = useState<ProjectSummary[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+
+  const debouncedIdentifier = useDebounce(identifier, 450);
+  const debouncedName = useDebounce(name, 400);
 
   useEffect(() => {
     apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
       .then((r) => setWorkspaces(r.data))
       .catch(() => { /* non-blocking */ });
+    apiGet<ApiWrapped<ProjectSummary[]>>('/projects')
+      .then((r) => setAllProjects(r.data))
+      .catch(() => { /* non-blocking */ });
   }, []);
+
+  /* Validate project name uniqueness */
+  useEffect(() => {
+    if (!debouncedName.trim()) { setNameError(''); return; }
+    const exists = allProjects.some(
+      (p) => p.name.trim().toLowerCase() === debouncedName.trim().toLowerCase()
+    );
+    setNameError(exists ? 'Ya existe un proyecto con ese nombre' : '');
+  }, [debouncedName, allProjects]);
+
+  /* Auto-generate a FREE identifier when name changes (and user hasn't manually edited) */
+  useEffect(() => {
+    if (identifierTouched) return;
+    const candidates = generateCandidates(name);
+    if (candidates.length === 0) { setIdentifier(''); return; }
+    let cancelled = false;
+    setIdentifierChecking(true);
+    findFreeCode(candidates).then((free) => {
+      if (cancelled) return;
+      setIdentifier(free ?? candidates[0]);
+      setIdentifierError('');
+      setIdentifierChecking(false);
+    });
+    return () => { cancelled = true; setIdentifierChecking(false); };
+  }, [name, identifierTouched]);
+
+  /* Real-time uniqueness check when user manually edits the identifier */
+  useEffect(() => {
+    if (!identifierTouched) return;
+    if (!debouncedIdentifier || debouncedIdentifier.length < 2) {
+      setIdentifierError('');
+      return;
+    }
+    setIdentifierChecking(true);
+    setIdentifierError('');
+    apiGet<ApiWrapped<ProjectSummary>>(`/projects/${debouncedIdentifier.toLowerCase()}`)
+      .then(() => setIdentifierError('Este identificador ya está en uso'))
+      .catch(() => setIdentifierError(''))
+      .finally(() => setIdentifierChecking(false));
+  }, [debouncedIdentifier, identifierTouched]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setNameError('El nombre es requerido');
-      return;
-    }
-    if (!identifier.trim()) {
-      setNameError('El identificador es requerido');
-      return;
-    }
+    if (!name.trim()) { setNameError('El nombre es requerido'); return; }
+    const nameTaken = allProjects.some(
+      (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    if (nameTaken) { setNameError('Ya existe un proyecto con ese nombre'); return; }
+    if (!identifier.trim()) { setIdentifierError('El identificador es requerido'); return; }
+
+    // Always do a hard check right before submitting (guards against race conditions)
     setSubmitting(true);
     setSubmitError('');
+    try {
+      await apiGet<ApiWrapped<ProjectSummary>>(`/projects/${identifier.toLowerCase()}`);
+      // 200 → already exists
+      setIdentifierError('Este identificador ya está en uso');
+      setSubmitting(false);
+      return;
+    } catch {
+      // 404 → free to use
+    }
+
     try {
       const res = await apiPost<ApiWrapped<{ id: string }>>('/projects', {
         name: name.trim(),
@@ -594,7 +684,6 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
         value={name}
         onChange={(e) => {
           setName(e.target.value);
-          if (e.target.value.trim()) setNameError('');
         }}
         error={nameError}
         // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -606,20 +695,41 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
       <Field
         label="Identificador"
         htmlFor="cp-id"
-        hint={`Se usará como prefijo de tareas: ${identifier || 'ENG'}-1, ${identifier || 'ENG'}-2…`}
+        hint={
+          identifierChecking
+            ? 'Verificando disponibilidad…'
+            : `Se usará como prefijo de tareas: ${identifier || 'ENG'}-1, ${identifier || 'ENG'}-2…`
+        }
       >
-        <input
-          id="cp-id"
-          type="text"
-          maxLength={4}
-          placeholder="ENG"
-          value={identifier}
-          onChange={(e) =>
-            setIdentifier(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
-          }
-          className={`${baseCls} w-24 font-mono text-center`}
-          autoComplete="off"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            id="cp-id"
+            type="text"
+            maxLength={4}
+            placeholder="ENG"
+            value={identifier}
+            onChange={(e) => {
+              const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+              setIdentifier(val);
+              setIdentifierTouched(true);
+              setIdentifierError('');
+            }}
+            className={`${baseCls} w-24 font-mono text-center ${identifierError ? 'border-[var(--c-danger)]' : ''}`}
+            autoComplete="off"
+          />
+          {!identifierTouched && identifier && !identifierChecking && (
+            <span className="text-[11px] text-[var(--c-muted)]">Auto-generado</span>
+          )}
+          {identifierChecking && (
+            <span className="text-[11px] text-[var(--c-muted)] animate-pulse">Verificando…</span>
+          )}
+        </div>
+        {identifierError && (
+          <span className="text-[0.75rem] text-[var(--c-danger)]">{identifierError}</span>
+        )}
+        {!identifierError && identifier && !identifierChecking && identifierTouched && (
+          <span className="text-[0.75rem] text-green-600">Disponible ✓</span>
+        )}
       </Field>
 
       {/* Descripción */}

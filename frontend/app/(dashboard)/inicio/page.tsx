@@ -93,7 +93,8 @@ export default function InicioPage() {
 
   useEffect(() => { setGreetingText(greeting()); }, []);
 
-  useEffect(() => {
+  const fetchAll = useCallback((isInitial = false) => {
+    if (isInitial) setLoading(true);
     Promise.all([
       apiGet<ApiWrapped<TaskItem[]>>('/tasks/mine'),
       apiGet<ApiWrapped<TaskItem[]>>('/tasks'),
@@ -109,8 +110,14 @@ export default function InicioPage() {
         setNotifs(nots.data);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [tasksVersion]);
+      .finally(() => { if (isInitial) setLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    fetchAll(true);
+    const interval = setInterval(() => fetchAll(false), 30_000);
+    return () => clearInterval(interval);
+  }, [tasksVersion, fetchAll]);
 
   const activeCycle        = useMemo(() => cycles.find((c) => c.status === 'activo') ?? null, [cycles]);
   const activeProjectCount = projects.filter((p) => p.status === 'activo').length;
@@ -217,10 +224,10 @@ export default function InicioPage() {
       <div className="md:flex-1 md:min-h-0 grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-3">
 
         {/* LEFT */}
-        <div className="flex flex-col gap-3 md:min-h-0">
+        <div className="flex flex-col gap-3 md:min-h-0 md:h-full">
 
           {/* Mis tareas */}
-          <div className="shrink-0 border border-[var(--c-border)] rounded-lg overflow-hidden">
+          <div className="border border-[var(--c-border)] rounded-lg overflow-hidden flex flex-col min-h-0 shrink-0" style={{ maxHeight: '40%' }}>
             <Label>Mis tareas hoy</Label>
             {loading ? (
               <div className="px-4 py-2 flex flex-col gap-1.5">
@@ -229,7 +236,7 @@ export default function InicioPage() {
             ) : myTasks.length === 0 ? (
               <p className="px-4 pb-3 text-sm text-[var(--c-muted)]">Sin tareas asignadas</p>
             ) : (
-              <div className="divide-y divide-[var(--c-line)]">
+              <div className="overflow-y-auto flex-1 min-h-0 divide-y divide-[var(--c-line)]" style={{ scrollbarWidth: 'thin' }}>
                 {myTasks.map((task) => {
                   const dl   = dueDateBadge(task.due_date);
                   const pDot = PRIORITY_DOT[task.priority] ?? 'var(--c-border)';
@@ -319,15 +326,21 @@ export default function InicioPage() {
         <div className="flex flex-col gap-3 md:min-h-0 md:overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
 
           {/* Progreso de proyectos */}
-          <div className="shrink-0 border border-[var(--c-border)] rounded-lg overflow-hidden">
+          <div className="border border-[var(--c-border)] rounded-lg overflow-hidden flex flex-col" style={{ maxHeight: '70vh' }}>
             <Label>Progreso de proyectos</Label>
             {loading ? (
               <div className="px-4 py-2 flex flex-col gap-2">
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}
               </div>
             ) : (
-              <div className="divide-y divide-[var(--c-line)]">
-                {projects.slice(0, 4).map((p, i) => {
+              <div className="overflow-y-auto flex-1 min-h-0 divide-y divide-[var(--c-line)]" style={{ scrollbarWidth: 'thin' }}>
+                {[...projects]
+                  .sort((a, b) => {
+                    // Highest progress first; tiebreak by most tasks done
+                    if (b.progress_pct !== a.progress_pct) return b.progress_pct - a.progress_pct;
+                    return b.tasks_done - a.tasks_done;
+                  })
+                  .map((p, i) => {
                   const color = PROJECT_COLORS[i % PROJECT_COLORS.length];
                   return (
                     <div key={p.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -342,7 +355,7 @@ export default function InicioPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium text-[var(--c-text)] truncate">{p.name}</p>
-                        <p className="text-[10px] text-[var(--c-muted)] mt-0.5">{p.tasks_done}/{p.tasks_total} tareas</p>
+                        <p className="text-[10px] text-[var(--c-muted)] mt-0.5">{p.tasks_done}/{p.tasks_total} tareas completadas</p>
                         <div className="mt-1 h-0.5 bg-[var(--c-line)] rounded-full overflow-hidden">
                           <div className="h-full rounded-full" style={{ width: `${p.progress_pct}%`, backgroundColor: color, transition: 'width 0.6s ease' }} />
                         </div>

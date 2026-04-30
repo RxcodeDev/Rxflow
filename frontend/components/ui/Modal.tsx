@@ -28,14 +28,14 @@ export default function Modal({ open, onClose, title, actions, children }: Modal
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-[var(--c-bg)] border border-[var(--c-border)] rounded-[1.25rem] p-6"
+        className="w-full max-w-md bg-[var(--c-bg)] border border-[var(--c-border)] rounded-[1.25rem] flex flex-col max-h-[calc(100vh-2rem)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
       >
         {title && (
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
             <h2 id="modal-title" className="text-[1.125rem] font-bold text-[var(--c-text)]">
               {title}
             </h2>
@@ -63,7 +63,9 @@ export default function Modal({ open, onClose, title, actions, children }: Modal
             </div>
           </div>
         )}
-        {children}
+        <div className={`overflow-y-auto px-6 pb-6 ${!title ? 'pt-6' : ''}`}>
+          {children}
+        </div>
       </div>
     </div>
   );
