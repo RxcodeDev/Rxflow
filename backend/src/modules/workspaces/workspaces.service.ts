@@ -23,6 +23,10 @@ export class WorkspacesService {
     return this.repo.findAll();
   }
 
+  findAllForUser(userId: string) {
+    return this.repo.findAllForUser(userId);
+  }
+
   async findById(id: string) {
     const ws = await this.repo.findById(id);
     if (!ws) throw new NotFoundException(`Espacio de trabajo '${id}' no encontrado`);

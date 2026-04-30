@@ -3,6 +3,7 @@ import {
   Param, Patch, Post, UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { WorkspaceAccessGuard } from '../../common/guards/workspace-access.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { WorkspacesService } from './workspaces.service';
 import type { CreateWorkspaceDto, UpdateWorkspaceDto } from './workspaces.service';
@@ -15,8 +16,8 @@ export class WorkspacesController {
   constructor(private readonly svc: WorkspacesService) {}
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  findAll(@CurrentUser() user: AuthUser) {
+    return this.svc.findAllForUser(user.id);
   }
 
   @Get('unassigned-projects')
@@ -25,6 +26,7 @@ export class WorkspacesController {
   }
 
   @Get(':id')
+  @UseGuards(WorkspaceAccessGuard)
   findOne(@Param('id') id: string) {
     return this.svc.findById(id);
   }

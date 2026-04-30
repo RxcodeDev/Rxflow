@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, use, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { ProjectSummary, EpicItem, TaskItem, ApiWrapped } from '@/types/api.types';
@@ -14,6 +15,9 @@ import TaskCreateModal from '@/components/features/projects/TaskCreateModal';
 import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import { PRIORITY_STYLE } from '@/components/features/projects/projectShared';
+
+/* Module-level — persists each epic's open/closed state across any remount */
+const epicOpenState = new Map<string, boolean>();
 
 /* ── Helpers ─────────────────────────────────────────── */
 function Skeleton({ className = '' }: { className?: string }) {
@@ -94,8 +98,7 @@ interface EpicCardProps {
   epic: EpicItem;
   allEpics: EpicItem[];
   tasks: TaskItem[];
-  expanded: Set<string>;
-  onToggleExpand: (id: string) => void;
+  initialOpen?: boolean;
   onAddTask: (epicId: string) => void;
   onEditEpic: (epic: EpicItem) => void;
   onOpenTask: (taskId: string) => void;
@@ -104,14 +107,27 @@ interface EpicCardProps {
 }
 
 function EpicCard({
-  epic, allEpics, tasks, expanded,
-  onToggleExpand, onAddTask, onEditEpic, onOpenTask,
+  epic, allEpics, tasks, initialOpen = false,
+  onAddTask, onEditEpic, onOpenTask,
   projectCode: _projectCode, depth = 0,
 }: EpicCardProps) {
+  /* isOpen lives here — React never resets useState on re-render, only on remount.
+     The module Map restores the value if the component remounts. */
+  const [isOpen, setIsOpen] = useState(() => {
+    if (epicOpenState.has(epic.id)) return epicOpenState.get(epic.id)!;
+    epicOpenState.set(epic.id, initialOpen);
+    return initialOpen;
+  });
+
+  function toggle() {
+    const next = !isOpen;
+    epicOpenState.set(epic.id, next);
+    setIsOpen(next);
+  }
+
   const children  = allEpics.filter(e => e.parent_epic_id === epic.id);
   const epicTasks = tasks.filter(t => t.epic_id === epic.id);
   const doneTasks = epicTasks.filter(t => t.status === 'completada').length;
-  const isOpen    = expanded.has(epic.id);
 
   return (
     <div
@@ -123,7 +139,7 @@ function EpicCard({
         {/* Expand/collapse */}
         <button
           type="button"
-          onClick={() => onToggleExpand(epic.id)}
+          onClick={() => toggle()}
           className="shrink-0 w-5 h-5 flex items-center justify-center text-[var(--c-muted)] hover:text-[var(--c-text)] transition-colors cursor-pointer bg-transparent border-none"
           aria-label={isOpen ? 'Colapsar' : 'Expandir'}
         >
@@ -262,8 +278,7 @@ function EpicCard({
                       epic={child}
                       allEpics={allEpics}
                       tasks={tasks}
-                      expanded={expanded}
-                      onToggleExpand={onToggleExpand}
+                      initialOpen={false}
                       onAddTask={onAddTask}
                       onEditEpic={onEditEpic}
                       onOpenTask={onOpenTask}
@@ -282,8 +297,9 @@ function EpicCard({
 }
 
 /* ── Page ────────────────────────────────────────────── */
-export default function EpicasPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: projectCode } = use(params);
+export default function EpicasPage() {
+  const params = useParams<{ id: string }>();
+  const projectCode = params.id;
   const code = projectCode.toUpperCase();
   const dispatch = useUIDispatch();
   const { tasksVersion } = useUIState();
@@ -293,9 +309,6 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
   const [tasks,   setTasks]   = useState<TaskItem[]>([]);
   const [members, setMembers] = useState<{ id: string; name: string; initials: string }[]>([]);
   const [loading, setLoading] = useState(true);
-
-  /* Expanded state */
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   /* ── Create epic modal ── */
   const [epicModalOpen,  setEpicModalOpen]  = useState(false);
@@ -330,7 +343,9 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
       .catch(console.error);
   }, [code]);
 
+  /* Full load — only re-runs when project changes */
   useEffect(() => {
+    setLoading(true);
     Promise.all([
       apiGet<ApiWrapped<ProjectSummary>>(`/projects/${code}`),
       apiGet<ApiWrapped<EpicItem[]>>(`/projects/${code}/epics`),
@@ -343,12 +358,19 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
         setEpics(eRes.data);
         setTasks(tRes.data);
         setMembers(mRes.data);
-        const firstActive = eRes.data.filter(e => e.status === 'activa' && !e.parent_epic_id).slice(0, 3);
-        setExpanded(new Set(firstActive.map(e => e.id)));
+        /* Mark first 3 active root epics as open on first visit (if not already in Map) */
+        eRes.data.filter(e => e.status === 'activa' && !e.parent_epic_id).slice(0, 3)
+          .forEach(e => { if (!epicOpenState.has(e.id)) epicOpenState.set(e.id, true); });
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [code, tasksVersion]);
+  }, [code]);
+
+  /* Tasks-only refresh when a task is patched from the drawer */
+  useEffect(() => {
+    if (tasksVersion === 0) return;
+    fetchTasks();
+  }, [tasksVersion, fetchTasks]);
 
   /* ── Create epic handlers ── */
   function openEpicModal(defaultParentId = '') {
@@ -393,7 +415,7 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
         });
         return [...updated, newEpic];
       });
-      setExpanded(prev => new Set([...prev, newEpic.id]));
+      epicOpenState.set(newEpic.id, true);
       playSuccess();
       setEpicModalOpen(false);
     } catch (err) {
@@ -482,14 +504,6 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
   function openTaskForEpic(epicId: string) {
     setTaskDefaultEpic(epicId);
     setTaskModalOpen(true);
-  }
-
-  function toggleExpand(epicId: string) {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(epicId)) next.delete(epicId); else next.add(epicId);
-      return next;
-    });
   }
 
   /* ── Derived data ── */
@@ -586,8 +600,7 @@ export default function EpicasPage({ params }: { params: Promise<{ id: string }>
                 epic={epic}
                 allEpics={epics}
                 tasks={tasks}
-                expanded={expanded}
-                onToggleExpand={toggleExpand}
+                initialOpen={epicOpenState.get(epic.id) ?? false}
                 onAddTask={openTaskForEpic}
                 onEditEpic={openEditModal}
                 onOpenTask={(id) => dispatch(openDrawer({ taskId: id, projectId: projectCode }))}

@@ -1,0 +1,144 @@
+// =============================================================================
+// Rxflow — Prisma Schema
+// Provider : PostgreSQL
+// Nota     : Los módulos existentes (tasks, cycles, notifications, epics)
+//            siguen usando raw pg.  Prisma gestiona únicamente el dominio
+//            License + las relaciones de acceso (Workspace, Project, members).
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── NEW: License domain ──────────────────────────────────────────────────────
+
+model License {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String   @db.VarChar(200)
+  owner_id   String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @db.Timestamptz
+
+  owner      User            @relation("LicenseOwner", fields: [owner_id], references: [id])
+  workspaces Workspace[]
+  members    LicenseMember[]
+
+  @@map("licenses")
+}
+
+model LicenseMember {
+  license_id String   @db.Uuid
+  user_id    String   @db.Uuid
+  role       String   @default("member") @db.VarChar(20)
+  joined_at  DateTime @default(now()) @db.Timestamptz
+
+  license License @relation(fields: [license_id], references: [id], onDelete: Cascade)
+  user    User    @relation("LicenseMemberUser", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([license_id, user_id])
+  @@map("license_members")
+}
+
+// ── Existing tables (read/write via Prisma for relations only) ────────────────
+
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String    @db.VarChar(100)
+  email           String    @unique @db.VarChar(255)
+  password_hash   String    @db.VarChar(255)
+  role            String    @default("member") @db.VarChar(50)
+  initials        String    @db.VarChar(4)
+  avatar_url      String?   @db.VarChar(500)
+  avatar_color    String?   @db.VarChar(20)
+  presence_status String    @default("offline")
+  last_seen_at    DateTime? @db.Timestamptz
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @default(now()) @db.Timestamptz
+
+  ownedLicenses     License[]         @relation("LicenseOwner")
+  licenseMembers    LicenseMember[]   @relation("LicenseMemberUser")
+  workspacesCreated Workspace[]       @relation("WorkspaceCreator")
+  workspaceMembers  WorkspaceMember[]
+  projectMembers    ProjectMember[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  license_id  String?  @db.Uuid
+  name        String
+  description String?
+  color       String   @default("#6366f1")
+  icon        String   @default("layers")
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @default(now()) @db.Timestamptz
+
+  license  License?          @relation(fields: [license_id], references: [id], onDelete: Cascade)
+  creator  User?             @relation("WorkspaceCreator", fields: [created_by], references: [id])
+  members  WorkspaceMember[]
+  projects WorkspaceProject[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspace_id String   @db.Uuid
+  user_id      String   @db.Uuid
+  added_at     DateTime @default(now()) @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([workspace_id, user_id])
+  @@map("workspace_members")
+}
+
+model Project {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique @db.VarChar(4)
+  name        String   @db.VarChar(100)
+  description String?
+  methodology String   @default("kanban")
+  status      String   @default("activo")
+  extra_views Json     @default("[]")
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @default(now()) @db.Timestamptz
+
+  members    ProjectMember[]
+  workspaces WorkspaceProject[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  project_id String  @db.Uuid
+  user_id    String  @db.Uuid
+  role       String  @default("member") @db.VarChar(50)
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([project_id, user_id])
+  @@map("project_members")
+}
+
+model WorkspaceProject {
+  workspace_id String   @db.Uuid
+  project_id   String   @db.Uuid
+  added_at     DateTime @default(now()) @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  @@id([workspace_id, project_id])
+  @@map("workspace_projects")
+}

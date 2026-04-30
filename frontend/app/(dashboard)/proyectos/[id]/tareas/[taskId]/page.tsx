@@ -37,7 +37,7 @@ interface TaskDetail {
 }
 
 type EpicOpt  = { id: string; name: string };
-type UserOpt  = { id: string; name: string; initials: string };
+type UserOpt  = { id: string; name: string; initials: string; avatarUrl: string | null; avatarColor: string | null };
 type TabType  = 'comments' | 'activity';
 
 /* ── Helpers ─────────────────────────────────────────── */
@@ -87,7 +87,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
         setTask(t);
         setEditTitle(t.title);
         setEditDesc(t.description ?? '');
-        setUsers(usersRes.data.map((u) => ({ id: u.id, name: u.name, initials: u.initials })));
+        setUsers(usersRes.data.map((u) => ({ id: u.id, name: u.name, initials: u.initials, avatarUrl: u.avatar_url, avatarColor: u.avatar_color })));
         return apiGet<{ ok: boolean; data: EpicOpt[] }>(`/projects/${t.project_code}/epics`);
       })
       .then((er) => setEpics(er.data))

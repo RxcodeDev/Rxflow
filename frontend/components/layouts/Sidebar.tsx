@@ -38,6 +38,7 @@ interface NavSection {
 
 interface SidebarProps {
   sections?: NavSection[];
+  bottomItems?: NavItem[];
 }
 
 /* ── Default nav structure (matches Figma) ──────────── */

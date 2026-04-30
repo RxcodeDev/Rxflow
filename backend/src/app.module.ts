@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProjectsModule } from './modules/projects/projects.module';
@@ -9,9 +10,11 @@ import { CyclesModule } from './modules/cycles/cycles.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
+import { LicensesModule } from './modules/licenses/licenses.module';
 
 @Module({
   imports: [
+    PrismaModule,
     AuthModule,
     UsersModule,
     ProjectsModule,
@@ -20,6 +23,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
     NotificationsModule,
     SeedModule,
     WorkspacesModule,
+    LicensesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

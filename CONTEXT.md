@@ -4,6 +4,12 @@
 
 > Si no estan levando el frontend en local levantalo el backend y bd es mediante docker
 
+> **⚠ Frontend corre en Docker — SIEMPRE hacer rebuild al cambiar código:**
+> ```bash
+> docker compose build frontend && docker compose up -d frontend
+> ```
+> Los cambios en archivos `.tsx`/`.ts` NO se reflejan hasta reconstruir el contenedor. No hay hot-reload en producción Docker.
+
 > **⚠ Regla de mantenimiento:** Cada vez que Copilot haga un cambio en el proyecto (nueva página, nuevo endpoint, nuevo componente, cambio de arquitectura, nueva dependencia, etc.) **debe actualizar este archivo y el `.github/copilot-instructions.md` correspondiente** antes de terminar la tarea.
 
 ---

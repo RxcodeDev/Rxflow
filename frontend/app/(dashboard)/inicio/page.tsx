@@ -89,6 +89,9 @@ export default function InicioPage() {
   const [cycles,   setCycles]   = useState<CycleSummary[]>([]);
   const [notifs,   setNotifs]   = useState<NotificationItem[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [greetingText, setGreetingText] = useState('');
+
+  useEffect(() => { setGreetingText(greeting()); }, []);
 
   useEffect(() => {
     Promise.all([
@@ -188,7 +191,7 @@ export default function InicioPage() {
       {/* HEADER */}
       <div className="shrink-0">
         <h1 className="text-lg font-bold text-[var(--c-text)]">
-          {greeting()}, {user?.name ?? 'Usuario'}
+          {greetingText && <>{greetingText}, </>}{user?.name ?? 'Usuario'}
         </h1>
         <p className="text-xs text-[var(--c-muted)] mt-0.5">{subtitleText}</p>
       </div>

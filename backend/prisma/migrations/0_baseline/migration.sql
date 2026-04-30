@@ -1,0 +1,3 @@
+-- Baseline migration — represents the existing DB schema created by V001–V006 raw migrations.
+-- This file is intentionally empty because the tables already exist in the database.
+-- Marked as applied via: npx prisma migrate resolve --applied 0_baseline

@@ -176,7 +176,7 @@ export default function PreferenciasPage() {
 
   useEffect(() => {
     apiGet<NotifPrefs>('/notifications/prefs')
-      .then((res) => { if (res.ok) setNotif(res.data); })
+      .then((data) => setNotif(data))
       .catch(() => { /* keep defaults */ })
       .finally(() => setLoadingPrefs(false));
   }, []);

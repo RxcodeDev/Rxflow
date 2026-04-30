@@ -40,7 +40,31 @@ export class WorkspacesRepository {
   }
 
   async findAll(): Promise<WorkspaceSummary[]> {
-    // 1. Load all workspaces
+    return this.findAllForUser(null);
+  }
+
+  /**
+   * Returns workspaces scoped to the given user:
+   * - License owner → all workspaces in their licenses.
+   * - Member → only workspaces where user is in workspace_members.
+   * - null → all workspaces (admin / internal use).
+   */
+  async findAllForUser(userId: string | null): Promise<WorkspaceSummary[]> {
+    const whereClause = userId
+      ? `WHERE (
+           EXISTS (
+             SELECT 1 FROM licenses l
+             WHERE l.id = w.license_id AND l.owner_id = $1
+           )
+           OR EXISTS (
+             SELECT 1 FROM workspace_members wm2
+             WHERE wm2.workspace_id = w.id AND wm2.user_id = $1
+           )
+         )`
+      : '';
+    const params = userId ? [userId] : [];
+
+    // 1. Load scoped workspaces
     const { rows: wRows } = await this.pool.query(`
       SELECT
         w.id, w.name, w.description, w.color, w.icon, w.created_by,
@@ -53,8 +77,9 @@ export class WorkspacesRepository {
         JOIN users u ON u.id = wm.user_id
         WHERE wm.workspace_id = w.id
       ) mem ON true
+      ${whereClause}
       ORDER BY w.created_at ASC
-    `);
+    `, params);
 
     if (wRows.length === 0) return [];
 

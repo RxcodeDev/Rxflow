@@ -1,16 +1,36 @@
 # Development overrides — auto-merged by docker-compose
-# Mounts source code as volume so code changes don't require a full image rebuild.
-# Usage:
-#   First time (or after npm install changes):
-#     docker-compose up --build backend -d
-#   After any code change:
-#     docker-compose restart backend
-#   (nest --watch recompiles automatically inside the container)
+#
+# Monta el código fuente como volumen para que los cambios se reflejen
+# sin reconstruir la imagen. El watcher interno recarga automáticamente.
+#
+# Uso:
+#   Primera vez (o tras cambiar package.json):
+#     docker-compose up --build -d
+#
+#   Desarrollo normal (sin reconstruir):
+#     docker-compose up -d
+#
+#   Si agregas un paquete nuevo (npm install):
+#     docker-compose up --build <backend|frontend> -d
+#
+# El flag CHOKIDAR_USEPOLLING / WATCHPACK_POLLING es necesario en Windows
+# porque Docker Desktop no puede usar inotify del host directamente.
+
 services:
   backend:
-    command: npm run start:dev
+    command: sh -c "npx prisma generate && npm run start:dev"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
     volumes:
-      - ./backend/src:/app/src
-      - ./backend/tsconfig.json:/app/tsconfig.json
-      - ./backend/tsconfig.build.json:/app/tsconfig.build.json
-      - ./backend/nest-cli.json:/app/nest-cli.json
+      - ./backend:/app
+      - /app/node_modules   # preserva node_modules del contenedor
+
+  frontend:
+    command: npm run dev
+    environment:
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # preserva node_modules del contenedor
+      - /app/.next          # preserva el caché de Next.js
