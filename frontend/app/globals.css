@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* ── Wiki editor drag animations ──────────────────────────────────── */
+@keyframes wiki-drag-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes wiki-dash-spin {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 100; }
+}
+
 /* ── Design Tokens ──────────────────────────────────────
    Palette: white · gray scale · near-black. No other colors.
    All components reference these variables — never hardcode.
@@ -130,12 +140,14 @@ body {
 }
 .wiki-prose pre {
   background: var(--c-hover);
+  color: var(--c-text);
   padding: 1rem;
   border-radius: 0.5rem;
   margin-bottom: 0.6rem;
   overflow-x: auto;
+  position: relative;
 }
-.wiki-prose pre code { background: transparent; padding: 0; font-size: 0.875em; }
+.wiki-prose pre code { background: transparent; padding: 0; font-size: 0.875em; color: inherit; }
 .wiki-prose blockquote {
   border-left: 3px solid var(--c-border);
   padding-left: 1rem;
@@ -144,6 +156,43 @@ body {
 }
 .wiki-prose a  { color: var(--c-text); text-decoration: underline; text-underline-offset: 2px; }
 .wiki-prose hr { border: none; border-top: 1px solid var(--c-border); margin: 1.2rem 0; }
+.wiki-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 0.25rem;
+  border: 1px solid var(--c-border);
+  display: inline-block;
+  vertical-align: bottom;
+  transition: box-shadow 0.2s, opacity 0.2s;
+  cursor: grab;
+}
+.wiki-prose img:active { cursor: grabbing; opacity: 0.7; }
+.wiki-prose img.ProseMirror-selectednode {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.15);
+}
+
+/* ProseMirror drop cursor (internal content drag) */
+.ProseMirror-dropcursor {
+  border-top: 3px solid #6366f1 !important;
+  border-radius: 2px;
+  opacity: 1;
+  transition: all 0.12s ease;
+  position: relative;
+}
+.ProseMirror-dropcursor::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+}
+
 /* Tiptap placeholder */
 .wiki-prose p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -152,3 +201,36 @@ body {
   pointer-events: none;
   height: 0;
 }
+
+/* ── Lowlight / highlight.js syntax tokens — light mode (GitHub Light) ────── */
+.hljs-comment, .hljs-quote          { color: #6a737d; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag  { color: #d73a49; }
+.hljs-string, .hljs-attr           { color: #032f62; }
+.hljs-number, .hljs-literal        { color: #005cc5; }
+.hljs-built_in, .hljs-type         { color: #6f42c1; }
+.hljs-function, .hljs-title        { color: #6f42c1; }
+.hljs-variable, .hljs-name         { color: #e36209; }
+.hljs-tag                          { color: #22863a; }
+.hljs-attribute                    { color: #005cc5; }
+.hljs-regexp, .hljs-link           { color: #032f62; }
+.hljs-symbol, .hljs-bullet         { color: #e36209; }
+.hljs-meta                         { color: #6a737d; }
+.hljs-emphasis                     { font-style: italic; }
+.hljs-strong                       { font-weight: bold; }
+
+/* ── Lowlight / highlight.js syntax tokens — dark mode (VS Code Dark+) ─────── */
+[data-theme="dark"] .hljs-comment, [data-theme="dark"] .hljs-quote          { color: #6a9955; font-style: italic; }
+[data-theme="dark"] .hljs-keyword, [data-theme="dark"] .hljs-selector-tag  { color: #569cd6; }
+[data-theme="dark"] .hljs-string, [data-theme="dark"] .hljs-attr           { color: #ce9178; }
+[data-theme="dark"] .hljs-number, [data-theme="dark"] .hljs-literal        { color: #b5cea8; }
+[data-theme="dark"] .hljs-built_in, [data-theme="dark"] .hljs-type         { color: #4ec9b0; }
+[data-theme="dark"] .hljs-function, [data-theme="dark"] .hljs-title        { color: #dcdcaa; }
+[data-theme="dark"] .hljs-variable, [data-theme="dark"] .hljs-name         { color: #9cdcfe; }
+[data-theme="dark"] .hljs-tag                                              { color: #569cd6; }
+[data-theme="dark"] .hljs-attribute                                        { color: #92c5f8; }
+[data-theme="dark"] .hljs-regexp, [data-theme="dark"] .hljs-link           { color: #d16969; }
+[data-theme="dark"] .hljs-symbol, [data-theme="dark"] .hljs-bullet         { color: #c586c0; }
+[data-theme="dark"] .hljs-meta                                             { color: #9e9e9e; }
+
+/* Ensure inline code does not inherit pre background */
+:not(pre) > code { background: var(--c-hover) !important; color: var(--c-text) !important; }

@@ -43,7 +43,7 @@ function Badge({
 export default function WikiRelationBadges({ page, labels = {} }: WikiRelationBadgesProps) {
   const badges: React.ReactNode[] = [];
 
-  if (page.workspace_id) {
+  if (page.workspace_id && labels.workspace) {
     badges.push(
       <Badge
         key="ws"
@@ -53,7 +53,7 @@ export default function WikiRelationBadges({ page, labels = {} }: WikiRelationBa
             <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
           </svg>
         }
-        label={labels.workspace ?? page.workspace_id.slice(0, 8)}
+        label={labels.workspace}
       />,
     );
   }

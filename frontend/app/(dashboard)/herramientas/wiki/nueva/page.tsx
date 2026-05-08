@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiGet, apiPost } from '@/lib/api';
-import type { ApiWrapped, WikiPageDetail, WikiPageSummary, WorkspaceSummary, TaskItem } from '@/types/api.types';
+import type { ApiWrapped, EpicItem, WikiPageDetail, WikiPageSummary, WorkspaceSummary, TaskItem } from '@/types/api.types';
 import WikiEditor from '@/components/features/wiki/WikiEditor';
 import TaskSearchSelect, { type TaskWithProject } from '@/components/features/wiki/TaskSearchSelect';
+import SearchSelect from '@/components/ui/SearchSelect';
 
 /* ── Shared styles (CreateTaskModal pattern) ─────────────────────── */
 const baseCls =
@@ -15,7 +16,6 @@ const baseCls =
   'placeholder:text-[var(--c-muted)] ' +
   'focus:border-[var(--c-text-sub)] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.06)]';
 
-const selectCls = baseCls + ' pr-8 appearance-none cursor-pointer';
 const labelCls = 'text-[0.7rem] font-semibold text-[var(--c-text-sub)] tracking-[0.04em] uppercase';
 
 /* ── Field wrapper ──────────────────────────────────────────────── */
@@ -30,33 +30,15 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-/* ── Styled native select with chevron ──────────────────────────── */
-function NativeSelect({
-  value, onChange, disabled, children,
-}: {
-  value: string;
-  onChange: (e: ChangeEvent<HTMLSelectElement>) => void;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        className={selectCls + (disabled ? ' opacity-50 cursor-not-allowed' : '')}
-      >
-        {children}
-      </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]" aria-hidden="true">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M2 4l4 4 4-4" />
-        </svg>
-      </span>
-    </div>
-  );
-}
+/* ── Link type picker ────────────────────────────────────────────── */
+type LinkType = '' | 'tarea' | 'epica' | 'proyecto';
+type EpicWithProject = EpicItem & { projectCode: string; projectName: string };
+
+const LINK_TYPES: Array<{ value: Exclude<LinkType, ''>; label: string; icon: ReactNode }> = [
+  { value: 'tarea',   label: 'Tarea',    icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><polyline points="9 12 11 14 15 10" /></svg> },
+  { value: 'epica',   label: 'Épica',    icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg> },
+  { value: 'proyecto',label: 'Proyecto', icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg> },
+];
 
 export default function NuevaWikiPage() {
   const router = useRouter();
@@ -70,8 +52,12 @@ export default function NuevaWikiPage() {
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [projectCode, setProjectCode] = useState<string>('');
   const [taskId, setTaskId] = useState<string>('');
+  const [epicId, setEpicId] = useState<string>('');
+  const [linkType, setLinkType] = useState<LinkType>('');
   const [allTasks, setAllTasks] = useState<TaskWithProject[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [allEpics, setAllEpics] = useState<EpicWithProject[]>([]);
+  const [epicsLoading, setEpicsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,6 +100,21 @@ export default function NuevaWikiPage() {
     });
   }, [allProjects]);
 
+  useEffect(() => {
+    if (allProjects.length === 0) return;
+    setEpicsLoading(true);
+    Promise.all(
+      allProjects.map(p =>
+        apiGet<ApiWrapped<EpicItem[]>>(`/projects/${p.code}/epics`)
+          .then(r => r.ok ? r.data.map((e): EpicWithProject => ({ ...e, projectCode: p.code, projectName: p.name })) : [])
+          .catch(() => []),
+      ),
+    ).then(results => {
+      setAllEpics(results.flat());
+      setEpicsLoading(false);
+    });
+  }, [allProjects]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) { setError('El título es requerido'); return; }
@@ -129,6 +130,7 @@ export default function NuevaWikiPage() {
         parentPageId: parentPageId || undefined,
         projectCode: projectCode || undefined,
         taskId: taskId || undefined,
+        epicId: epicId || undefined,
       });
       if (res.ok) router.push(`/herramientas/wiki/${res.data.id}`);
     } catch (err) {
@@ -170,12 +172,14 @@ export default function NuevaWikiPage() {
         <aside className="w-60 md:w-64 shrink-0 border-r border-[var(--c-border)] overflow-y-auto p-4 space-y-4 bg-[var(--c-bg)]">
 
           <Field label="Workspace" required>
-            <NativeSelect value={workspaceId} onChange={e => setWorkspaceId(e.target.value)}>
-              <option value="" disabled>Selecciona...</option>
-              {workspaces.map(ws => (
-                <option key={ws.id} value={ws.id}>{ws.name}</option>
-              ))}
-            </NativeSelect>
+            <SearchSelect
+              options={workspaces.map(ws => ({ value: ws.id, label: ws.name }))}
+              value={workspaceId}
+              onChange={v => setWorkspaceId(v)}
+              placeholder="Selecciona workspace..."
+              noneLabel="— ninguno —"
+              searchPlaceholder="Buscar workspace..."
+            />
           </Field>
 
           <Field label="Título" required>
@@ -191,16 +195,15 @@ export default function NuevaWikiPage() {
           </Field>
 
           <Field label="Proceso padre">
-            <NativeSelect
+            <SearchSelect
+              options={parentPages.map(p => ({ value: p.id, label: p.title }))}
               value={parentPageId}
-              onChange={e => setParentPageId(e.target.value)}
+              onChange={v => setParentPageId(v)}
+              placeholder="— ninguno (raíz) —"
+              noneLabel="— ninguno (raíz) —"
+              searchPlaceholder="Buscar proceso padre..."
               disabled={!workspaceId || parentPages.length === 0}
-            >
-              <option value="">— ninguno (raíz) —</option>
-              {parentPages.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </NativeSelect>
+            />
           </Field>
 
           <hr className="border-[var(--c-border)]" />
@@ -223,29 +226,70 @@ export default function NuevaWikiPage() {
 
             {relationsOpen && (
               <div className="mt-3 space-y-3">
-                <Field label="Tarea">
-                  <TaskSearchSelect
-                    tasks={allTasks}
-                    value={taskId}
-                    onChange={(id, task) => {
-                      setTaskId(id);
-                      if (task) setProjectCode(task.projectCode);
-                    }}
-                    loading={tasksLoading}
-                  />
-                </Field>
+                {/* Type picker pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  {LINK_TYPES.map(lt => (
+                    <button
+                      key={lt.value}
+                      type="button"
+                      onClick={() => {
+                        const next: LinkType = linkType === lt.value ? '' : lt.value;
+                        setLinkType(next);
+                        if (next !== 'tarea') setTaskId('');
+                        if (next !== 'epica') setEpicId('');
+                        if (next !== 'proyecto') setProjectCode('');
+                      }}
+                      className={[
+                        'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border',
+                        linkType === lt.value
+                          ? 'bg-[var(--c-text)] text-[var(--c-bg)] border-[var(--c-text)]'
+                          : 'text-[var(--c-text-sub)] border-[var(--c-border)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]',
+                      ].join(' ')}
+                    >
+                      {lt.icon}
+                      {lt.label}
+                    </button>
+                  ))}
+                </div>
 
-                <Field label="Proyecto">
-                  <NativeSelect
-                    value={projectCode}
-                    onChange={e => { setProjectCode(e.target.value); setTaskId(''); }}
-                  >
-                    <option value="">— ninguno —</option>
-                    {allProjects.map(p => (
-                      <option key={p.code} value={p.code}>{p.name}</option>
-                    ))}
-                  </NativeSelect>
-                </Field>
+                {linkType === 'tarea' && (
+                  <Field label="Tarea">
+                    <TaskSearchSelect
+                      tasks={allTasks}
+                      value={taskId}
+                      onChange={(tId, task) => {
+                        setTaskId(tId);
+                        if (task) setProjectCode(task.projectCode);
+                      }}
+                      loading={tasksLoading}
+                    />
+                  </Field>
+                )}
+
+                {linkType === 'epica' && (
+                  <Field label="Épica">
+                    <SearchSelect
+                      options={allEpics.map(e => ({ value: e.id, label: e.name, subLabel: e.projectName, colorKey: e.projectCode }))}
+                      value={epicId}
+                      onChange={v => setEpicId(v)}
+                      loading={epicsLoading}
+                      noneLabel="— ninguna —"
+                      searchPlaceholder="Buscar épica..."
+                    />
+                  </Field>
+                )}
+
+                {linkType === 'proyecto' && (
+                  <Field label="Proyecto">
+                    <SearchSelect
+                      options={allProjects.map(p => ({ value: p.code, label: p.name }))}
+                      value={projectCode}
+                      onChange={v => setProjectCode(v)}
+                      noneLabel="— ninguno —"
+                      searchPlaceholder="Buscar proyecto..."
+                    />
+                  </Field>
+                )}
               </div>
             )}
           </div>

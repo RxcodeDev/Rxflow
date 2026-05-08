@@ -1,10 +1,52 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEditor, EditorContent, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Dropcursor from '@tiptap/extension-dropcursor';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { createLowlight, common } from 'lowlight';
+import { ResizableImage } from './ResizableImage';
+import { TiptapViewer } from './WikiViewer';
+import SlashMenuFloating, { SLASH_COMMANDS, type SlashCommand } from './SlashMenu';
+import { liftEmptyBlock } from 'prosemirror-commands';
+
+const lowlight = createLowlight(common);
+
+// ── Exit special block on Enter → plain paragraph ────────────────────────────
+const ExitBlockOnEnter = Extension.create({
+  name: 'exitBlockOnEnter',
+  priority: 200,
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        const { state, view } = this.editor;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+
+        const paragraphType = state.schema.nodes.paragraph;
+        const parentName = $from.parent.type.name;
+
+        // Heading: always split into a fresh paragraph
+        if (parentName === 'heading') {
+          view.dispatch(state.tr.split($from.pos, 1, [{ type: paragraphType }]));
+          return true;
+        }
+
+        // Blockquote: when the inner paragraph is empty, lift it out
+        if (parentName === 'paragraph' && $from.node(-1)?.type.name === 'blockquote') {
+          if ($from.parent.textContent === '') {
+            return liftEmptyBlock(state, view.dispatch);
+          }
+        }
+
+        return false;
+      },
+    };
+  },
+});
 
 interface WikiEditorProps {
   content?: Record<string, unknown>;
@@ -43,25 +85,128 @@ function ToolbarBtn({
   );
 }
 
+// ── Image helper ─────────────────────────────────────────────────────────────
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── Main editor ───────────────────────────────────────────────────────────────
+
+type SlashState = { x: number; y: number; activeIndex: number; items: SlashCommand[] } | null;
 
 export default function WikiEditor({ content, onChange, placeholder, title }: WikiEditorProps) {
   const [previewMode, setPreviewMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [slashMenu, setSlashMenu] = useState<SlashState>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const dragCounter = useRef(0);
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  const slashStateRef = useRef<SlashState>(null);
+
+
+  const setSlash = useCallback((menu: SlashState) => {
+    slashStateRef.current = menu;
+    setSlashMenu(menu);
+  }, []);
+
+  const insertImages = useCallback(async (files: FileList | File[]) => {
+    const images = Array.from(files).filter(f => f.type.startsWith('image/'));
+    for (const file of images) {
+      const src = await fileToBase64(file);
+      const ed = editorRef.current;
+      if (!ed) continue;
+      // setImage then move cursor after it so the user can keep typing
+      ed.chain().focus().setImage({ src }).createParagraphNear().run();
+    }
+  }, []);
+
+  const triggerImagePick = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.onchange = async () => {
+      if (input.files) await insertImages(input.files);
+    };
+    input.click();
+  }, [insertImages]);
+
+  const executeSlash = useCallback((item: SlashCommand) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const { $from } = ed.state.selection;
+    const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+    const match = textBefore.match(/\/(\S*)$/);
+    if (match) {
+      ed.chain().focus().deleteRange({ from: $from.pos - match[0].length, to: $from.pos }).run();
+    } else {
+      ed.commands.focus();
+    }
+    item.action(ed, { triggerImage: triggerImagePick });
+    setSlash(null);
+  }, [triggerImagePick, setSlash]);
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ dropcursor: false, codeBlock: false }),
+      CodeBlockLowlight.configure({ lowlight }),
+      ExitBlockOnEnter,
+      Dropcursor.configure({ color: '#6366f1', width: 3 }),
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer' } }),
       Placeholder.configure({ placeholder: placeholder ?? 'Empieza a escribir...' }),
+      ResizableImage.configure({ allowBase64: true }),
     ],
     content: content ?? { type: 'doc', content: [] },
     editorProps: {
       attributes: { class: 'wiki-prose' },
+      handleKeyDown(view, event) {
+        const menu = slashStateRef.current;
+        if (!menu) return false;
+        if (event.key === 'ArrowDown') {
+          const next = { ...menu, activeIndex: (menu.activeIndex + 1) % menu.items.length };
+          slashStateRef.current = next; setSlashMenu(next);
+          return true;
+        }
+        if (event.key === 'ArrowUp') {
+          const prev = { ...menu, activeIndex: (menu.activeIndex - 1 + menu.items.length) % menu.items.length };
+          slashStateRef.current = prev; setSlashMenu(prev);
+          return true;
+        }
+        if (event.key === 'Enter') {
+          const item = menu.items[menu.activeIndex];
+          if (item) executeSlash(item);
+          return true;
+        }
+        if (event.key === 'Escape') {
+          setSlash(null);
+          return true;
+        }
+        return false;
+      },
+      handlePaste(_view, event) {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        const imageItems = Array.from(items).filter(i => i.type.startsWith('image/'));
+        if (imageItems.length === 0) return false;
+        event.preventDefault();
+        const files = imageItems.map(i => i.getAsFile()).filter(Boolean) as File[];
+        void insertImages(files);
+        return true;
+      },
     },
     onUpdate({ editor: e }) {
       onChange(e.getJSON() as Record<string, unknown>);
     },
   });
+
+  // Keep ref in sync so insertImages always has the live editor instance
+  (editorRef as React.MutableRefObject<typeof editor>).current = editor;
 
   // Sync external content changes (e.g., after async page load)
   useEffect(() => {
@@ -70,6 +215,49 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
     const nxt = JSON.stringify(content);
     if (cur !== nxt) editor.commands.setContent(content, false);
   }, [editor, content]);
+
+  // Slash command detection
+  useEffect(() => {
+    if (!editor) return;
+    const detectSlash = () => {
+      const { state } = editor;
+      const { $from } = state.selection;
+      const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+      const match = textBefore.match(/\/(\S*)$/);
+      if (!match) {
+        if (slashStateRef.current !== null) setSlash(null);
+        return;
+      }
+      const query = match[1].toLowerCase();
+      const items = SLASH_COMMANDS.filter(cmd =>
+        query === '' ||
+        cmd.label.toLowerCase().includes(query) ||
+        cmd.keywords.some(k => k.includes(query)),
+      );
+      const safePos = Math.min(state.selection.from, state.doc.content.size - 1);
+      const coords = editor.view.coordsAtPos(safePos);
+      setSlash({ x: coords.left, y: coords.bottom + 6, activeIndex: 0, items });
+    };
+    editor.on('update', detectSlash);
+    editor.on('selectionUpdate', detectSlash);
+    return () => {
+      editor.off('update', detectSlash);
+      editor.off('selectionUpdate', detectSlash);
+    };
+  }, [editor, setSlash]);
+
+  // Clear lightbox when leaving preview mode
+  useEffect(() => {
+    if (!previewMode) setLightbox(null);
+  }, [previewMode]);
+
+  // Escape to close lightbox
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
 
   if (!editor) return null;
 
@@ -88,7 +276,66 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
   };
 
   return (
-    <div className="h-full flex flex-col border border-[var(--c-border)] rounded-lg overflow-hidden">
+    <div
+      className="h-full flex flex-col border border-[var(--c-border)] rounded-lg overflow-hidden relative"
+      onDragEnter={e => {
+        e.preventDefault();
+        if (Array.from(e.dataTransfer?.items ?? []).some(i => i.type.startsWith('image/'))) {
+          dragCounter.current++;
+          setIsDragging(true);
+        }
+      }}
+      onDragLeave={() => {
+        dragCounter.current--;
+        if (dragCounter.current === 0) setIsDragging(false);
+      }}
+      onDragOver={e => e.preventDefault()}
+      onDrop={async e => {
+        e.preventDefault();
+        dragCounter.current = 0;
+        setIsDragging(false);
+        const files = e.dataTransfer?.files;
+        if (files && files.length > 0) await insertImages(files);
+      }}
+    >
+      {/* ── Drag overlay ─────────────────────────────────────────────── */}
+      {isDragging && (
+        <div
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 pointer-events-none"
+          style={{
+            background: 'rgba(99,102,241,0.07)',
+            backdropFilter: 'blur(3px)',
+            borderRadius: '0.5rem',
+            animation: 'wiki-drag-in 0.15s ease',
+          }}
+        >
+          {/* Animated dashed border ring */}
+          <div style={{
+            position: 'absolute', inset: 10,
+            border: '2.5px dashed #6366f1',
+            borderRadius: '0.625rem',
+            animation: 'wiki-dash-spin 8s linear infinite',
+          }} />
+          {/* Icon + label */}
+          <div className="relative flex flex-col items-center gap-3">
+            <div style={{
+              width: 64, height: 64,
+              background: 'rgba(99,102,241,0.12)',
+              borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 0 8px rgba(99,102,241,0.06)',
+            }}>
+              <svg viewBox="0 0 24 24" width="32" height="32" stroke="#6366f1" fill="none" strokeWidth="1.5" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" fill="#6366f1" stroke="none" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </div>
+            <span className="text-[13px] font-semibold" style={{ color: '#6366f1' }}>Suelta para insertar imagen</span>
+            <span className="text-[11px]" style={{ color: 'rgba(99,102,241,0.7)' }}>Se añadirá en el editor</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Top bar: tabs + toolbar ───────────────────────────────────── */}
       <div className="flex flex-wrap items-stretch border-b border-[var(--c-border)] bg-[var(--c-hover)] shrink-0">
@@ -200,6 +447,11 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
             </ToolbarBtn>
+            <ToolbarBtn onClick={triggerImagePick} title="Insertar imagen">
+              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+              </svg>
+            </ToolbarBtn>
 
             <span className="w-px bg-[var(--c-border)] mx-1 self-stretch" />
 
@@ -232,10 +484,64 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
           {editor.isEmpty
             ? <p className="text-sm text-[var(--c-muted)]">Sin contenido aún.</p>
             : (
-              /* eslint-disable-next-line react/no-danger */
-              <div className="wiki-prose" dangerouslySetInnerHTML={{ __html: editor.getHTML() }} />
+              <TiptapViewer
+                content={editor.getJSON() as Record<string, unknown>}
+                onLightbox={setLightbox}
+              />
             )
           }
+        </div>
+      )}
+
+      {/* ── Slash command menu ───────────────────────────────────────── */}
+      {slashMenu && slashMenu.items.length > 0 && (
+        <SlashMenuFloating
+          x={slashMenu.x}
+          y={slashMenu.y}
+          items={slashMenu.items}
+          activeIndex={slashMenu.activeIndex}
+          onSelect={executeSlash}
+          onClose={() => setSlash(null)}
+        />
+      )}
+
+      {/* ── Lightbox ─────────────────────────────────────────────────── */}
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          onClick={() => setLightbox(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label="Cerrar imagen"
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              width: 40, height: 40, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)',
+              color: '#fff', fontSize: 22, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >×</button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt=""
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '90vh',
+              borderRadius: 10,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
+              userSelect: 'none',
+            }}
+          />
         </div>
       )}
     </div>
