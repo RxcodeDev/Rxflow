@@ -15,7 +15,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (res.status === 401) {
+  if (res.status === 401 && !!getToken()) {
     clearAuth();
     if (typeof window !== 'undefined') window.location.href = '/login';
   }

@@ -1,16 +1,5 @@
 
 services:
-  cloudbeaver:
-    image: dbeaver/cloudbeaver:latest
-    container_name: rxflow_cloudbeaver
-    restart: unless-stopped
-    ports:
-      - "8978:8978"
-    depends_on:
-      - postgres
-    networks:
-      - app_network
-
   postgres:
     image: postgres:16-alpine
     container_name: rxflow_db
@@ -28,6 +17,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    pull_policy: build
     container_name: rxflow_backend
     restart: unless-stopped
     environment:
@@ -40,6 +30,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       FRONTEND_URL: http://localhost:3001
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "3000:3000"
     depends_on:
@@ -50,15 +41,30 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:3000
       dockerfile: Dockerfile
+    pull_policy: build
     container_name: rxflow_frontend
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     ports:
       - "3001:3001"
     depends_on:
       - backend
+    networks:
+      - app_network
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: rxflow_cloudbeaver
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "8978:8978"
     networks:
       - app_network
 

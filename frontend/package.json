@@ -9,6 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.52.0",
+    "@tiptap/extension-link": "^2",
+    "@tiptap/extension-placeholder": "^2",
+    "@tiptap/react": "^2",
+    "@tiptap/starter-kit": "^2",
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4"

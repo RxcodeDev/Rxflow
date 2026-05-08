@@ -5,6 +5,7 @@ import {
   HttpException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import * as Sentry from '@sentry/node';
 
 @Catch(HttpException)
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -14,6 +15,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const status = exception.getStatus();
     const body = exception.getResponse();
+
+    // Reportar errores de servidor (5xx) a Sentry
+    if (status >= 500) {
+      Sentry.captureException(exception);
+    }
 
     const message =
       typeof body === 'string'

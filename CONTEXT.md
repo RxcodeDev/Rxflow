@@ -42,15 +42,40 @@ cd frontend && npm run dev
 
 ### Frontend (`frontend/`)
 ```
-app/(dashboard)/layout.tsx        ← UIProvider + Sidebar + Navbar + modales globales
-app/(dashboard)/inicio/page.tsx   ← Dashboard ('use client', datos reales)
-app/(dashboard)/mis-tareas/       ← Tareas por status
-app/(dashboard)/inbox/            ← Notificaciones
-app/(dashboard)/proyectos/        ← Lista + [id]/board (kanban)
-app/(dashboard)/cycles/           ← Cycles
-app/(dashboard)/miembros/         ← Equipo
-app/(dashboard)/preferencias/     ← Server Component, visual only
-app/(dashboard)/integraciones/    ← Server Component, visual only
+app/(dashboard)/layout.tsx                      ← UIProvider + Sidebar + Navbar + modales globales
+app/(dashboard)/inicio/page.tsx                 ← Dashboard overview ('use client', datos reales)
+app/(dashboard)/dashboard/page.tsx              ← Vista de dashboard alternativa
+app/(dashboard)/mis-tareas/page.tsx             ← Tareas por status ('use client')
+app/(dashboard)/inbox/page.tsx                  ← Notificaciones
+app/(dashboard)/proyectos/page.tsx              ← Lista de proyectos
+app/(dashboard)/proyectos/[id]/board/page.tsx   ← Kanban board
+app/(dashboard)/proyectos/[id]/lista/page.tsx   ← Vista lista
+app/(dashboard)/proyectos/[id]/backlog/page.tsx ← Backlog
+app/(dashboard)/proyectos/[id]/epicas/page.tsx  ← Épicas
+app/(dashboard)/proyectos/[id]/cycles/page.tsx  ← Cycles de proyecto
+app/(dashboard)/proyectos/[id]/tareas/[taskId]/page.tsx ← Detalle de tarea
+app/(dashboard)/cycles/page.tsx                 ← Cycles globales
+app/(dashboard)/miembros/page.tsx               ← Equipo
+app/(dashboard)/espacios/page.tsx               ← Workspaces
+app/(dashboard)/perfil/page.tsx                 ← Perfil de usuario
+app/(dashboard)/preferencias/page.tsx           ← Preferencias (Server Component)
+app/(dashboard)/integraciones/page.tsx          ← Integraciones (Server Component)
+app/(dashboard)/herramientas/calendario/page.tsx
+app/(dashboard)/herramientas/documentos/page.tsx
+app/(dashboard)/herramientas/reportes/page.tsx
+app/(dashboard)/herramientas/wiki/page.tsx              ← Wiki home — árbol + lista de páginas ('use client')
+app/(dashboard)/herramientas/wiki/nueva/page.tsx        ← Crear nueva página wiki ('use client')
+app/(dashboard)/herramientas/wiki/[id]/page.tsx         ← Ver página wiki ('use client')
+app/(dashboard)/herramientas/wiki/[id]/editar/page.tsx  ← Editar página wiki ('use client')
+
+components/features/wiki/
+  WikiEditor.tsx       ← Editor Tiptap (StarterKit + Link + Placeholder)
+  WikiViewer.tsx       ← Render read-only Tiptap JSON
+  WikiPageTree.tsx     ← Árbol recursivo colapsable
+  WikiBreadcrumb.tsx   ← Breadcrumb de jerarquía
+  WikiRelationBadges.tsx ← Badges de workspace/proyecto/épica/tarea
+  WikiPageCard.tsx     ← Card de página en vista grid
+  WikiRelationPicker.tsx ← Pickers para vincular página a entidades
 
 components/layouts/Sidebar.tsx    ← Sidebar desktop ('use client')
 components/layouts/Navbar.tsx     ← Bottom nav mobile ('use client')
@@ -62,7 +87,9 @@ components/ui/                    ← Button, Input, Card, Modal, Spinner, Confi
 store/UIContext.tsx                ← UIProvider, useUIState(), useUIDispatch()
 store/slices/uiSlice.ts           ← openCreateModal, closeCreateModal, openDrawer, closeDrawer, bumpProjects
 lib/api.ts                        ← apiGet, apiPost, apiPatch, apiDelete
-types/api.types.ts                ← ApiWrapped<T>, ProjectSummary, TaskItem, CycleSummary, MemberItem, NotificationItem
+types/api.types.ts                ← ApiWrapped<T>, ProjectSummary, TaskItem, TaskAssignee, CycleSummary,
+                                     MemberItem, NotificationItem, EpicItem, WorkspaceSummary, PaginatedResponse,
+                                     License, WikiPageSummary, WikiPageDetail, WikiTreeNode
 middleware.ts                     ← Protege rutas, redirige a /login si no hay cookie rxflow_token
 ```
 
@@ -72,28 +99,26 @@ main.ts                           ← CORS, ValidationPipe global, HttpException
 app.module.ts                     ← Importa todos los módulos
 modules/auth/                     ← POST /auth/register, /auth/login, GET /auth/me
 modules/users/                    ← GET /users
-modules/projects/                 ← GET /projects, /projects/:code, /projects/:code/tasks
+modules/projects/                 ← GET /projects, /projects/:code, /projects/:code/tasks, /projects/:code/epics
 modules/tasks/                    ← GET/POST/PATCH /tasks, /tasks/mine, /tasks/:id
 modules/cycles/                   ← GET /cycles, /cycles/:id
 modules/notifications/            ← GET /notifications, PATCH mark-read
 modules/seed/                     ← POST /seed, GET /seed/status
-modules/workspaces/               ← Workspaces CRUD
+modules/workspaces/               ← Workspaces CRUD + miembros + proyectos
+modules/licenses/                 ← Licenses CRUD + miembros + workspaces (usa Prisma)
+modules/wiki/                     ← Wiki CRUD + filtros por proyecto/workspace/épica/tarea (usa Prisma)
+prisma/                           ← PrismaModule + PrismaService (licenses + wiki)
 common/guards/jwt-auth.guard.ts   ← JwtAuthGuard — usar en todo controlador protegido
 common/decorators/current-user.decorator.ts  ← @CurrentUser()
 common/interceptors/transform.interceptor.ts ← Envuelve todo en { ok, data }
 config/database.config.ts         ← getPool() singleton (raw pg, sin ORM)
 ```
 
+> **Nota arquitectura:** la mayoría de módulos usa raw `pg` via `getPool()`. Solo el módulo `licenses` usa Prisma (PrismaService). No mezclar: si extiendes un módulo existente, mantén su patrón de acceso a DB.
+
 ---
 
-## Páginas pendientes (no existen aún)
-
-```
-frontend/app/(dashboard)/herramientas/documentos/page.tsx
-frontend/app/(dashboard)/herramientas/reportes/page.tsx
-frontend/app/(dashboard)/herramientas/calendario/page.tsx
-frontend/app/(dashboard)/herramientas/wiki/page.tsx
-```
+## Trabajo pendiente
 
 TaskDrawer y CreateTaskModal aún usan datos demo hardcodeados (pendiente conectar a API real).
 
@@ -132,6 +157,7 @@ GET  /projects/:code/tasks → TaskItem[]
 GET  /projects/:code/epics → EpicItem[]
 POST /projects/:code/epics { name, description?, parent_epic_id? }
 PATCH /projects/:code/epics/:epicId { name?, description?, status?, parent_epic_id? }
+DELETE /projects/:code/epics/:epicId
 
 GET  /tasks/mine          → TaskItem[]  (usa @CurrentUser)
 GET  /tasks?projectCode=&status=&cycleId=  → TaskItem[]
@@ -149,6 +175,41 @@ PATCH /notifications/:id/read
 PATCH /notifications/read-all
 
 GET  /users               → MemberItem[]
+
+GET  /workspaces          → WorkspaceSummary[]
+GET  /workspaces/unassigned-projects → ProjectSummary[]
+GET  /workspaces/:id      → WorkspaceSummary
+POST /workspaces          { name, description?, color?, icon? }
+PATCH /workspaces/:id     { ...campos }
+DELETE /workspaces/:id
+POST /workspaces/:id/projects  { projectId }
+DELETE /workspaces/:id/projects/:projectId
+POST /workspaces/:id/members   { userId }
+DELETE /workspaces/:id/members/:userId
+
+POST /licenses            { name }
+GET  /licenses            → License[]
+GET  /licenses/:id        → License
+POST /licenses/:id/members       { userId, role? }
+DELETE /licenses/:id/members/:userId
+POST /licenses/:id/assign-workspace    { workspaceId }
+DELETE /licenses/:id/assign-workspace  { workspaceId }
+POST /licenses/:id/assign-project     { projectId }
+DELETE /licenses/:id/assign-project   { projectId }
+GET  /licenses/:id/my-workspaces → WorkspaceSummary[]
+
+GET  /wiki?licenseId=                      → WikiPageSummary[]
+GET  /wiki/tree?licenseId=                 → WikiTreeNode[]  (árbol recursivo)
+GET  /wiki/search?licenseId=&q=            → WikiPageSummary[]
+GET  /wiki/by-project/:code?licenseId=     → WikiPageSummary[]
+GET  /wiki/by-workspace/:id?licenseId=     → WikiPageSummary[]
+GET  /wiki/by-epic/:id?licenseId=          → WikiPageSummary[]
+GET  /wiki/by-task/:id?licenseId=          → WikiPageSummary[]
+GET  /wiki/:id                             → WikiPageDetail (+ breadcrumb + children)
+POST /wiki                                 { licenseId, title, content?, workspaceId?, projectCode?, epicId?, taskId?, parentPageId? }
+PATCH /wiki/:id                            { title?, content?, ...relaciones }
+DELETE /wiki/:id
+PATCH /wiki/:id/archive                    → toggle is_archived
 
 POST /seed                (solo dev)
 GET  /seed/status         → { users, projects, tasks, cycles }
@@ -178,10 +239,10 @@ dispatch(bumpProjects());                  // fuerza re-fetch de /projects en Si
 ## Credenciales demo
 
 ```
-ana@rxflow.io  / password123
-luis@rxflow.io / password123
-sara@rxflow.io / password123
-juan@rxflow.io / password123
+ana@rxflow.io  / audit1234
+luis@rxflow.io / audit1234
+sara@rxflow.io / audit1234
+juan@rxflow.io / audit1234
 ```
 
 ---
@@ -196,3 +257,4 @@ juan@rxflow.io / password123
 6. **CreateTaskModal y TaskDrawer** ya están montados en `layout.tsx` — nunca volver a montarlos
 7. **SQL parametrizado** en backend — nunca interpolación de strings
 8. **Iconos** = Feather, SVG inline, `viewBox="0 0 24 24"`, stroke-based, `aria-hidden="true"`
+9. **⛔ NUNCA `<select>` nativo** — siempre custom dropdown con búsqueda, íconos por opción y tooltip en hover. Referencia: `components/features/wiki/TaskSearchSelect.tsx`

@@ -1,262 +1,186 @@
 import { Injectable } from '@nestjs/common';
-import { getPool } from '../../config/database.config';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import type { TaskItem } from './entities/task.entity';
 import { NotificationsRepository } from '../notifications/notifications.repository';
 
-/** Subquery that returns the `assignees` JSON array for a task */
-const ASSIGNEES_SUBQ = `
-  COALESCE((
-    SELECT json_agg(json_build_object(
-             'id',           ua.id,
-             'name',         ua.name,
-             'initials',     ua.initials,
-             'avatar_color', ua.avatar_color
-           ) ORDER BY ta.assigned_at)
-    FROM task_assignees ta
-    JOIN users ua ON ua.id = ta.user_id
-    WHERE ta.task_id = t.id
-  ), '[]'::json)`;
+// ── Include shape reused across all list queries ──────────────────────────────
+const TASK_LIST_INCLUDE = {
+  project:      { select: { name: true, code: true } },
+  epic:         { select: { name: true } },
+  assignee:     { select: { initials: true } },
+  taskAssignees: {
+    include: { user: { select: { id: true, name: true, initials: true, avatar_color: true } } },
+    orderBy: { assigned_at: 'asc' as const },
+  },
+} satisfies Prisma.TaskInclude;
+
+type TaskListRow = Prisma.TaskGetPayload<{ include: typeof TASK_LIST_INCLUDE }>;
+
+const PRIORITY_ORDER: Record<string, number> = { urgente: 1, alta: 2, media: 3, baja: 4 };
+
+function toTaskItem(t: TaskListRow): TaskItem {
+  return {
+    id:                t.id,
+    sequential_id:     t.sequential_id,
+    identifier:        `${t.project.code}-${t.sequential_id}`,
+    project_name:      t.project.name,
+    project_code:      t.project.code,
+    title:             t.title,
+    priority:          t.priority,
+    status:            t.status,
+    epic_id:           t.epic_id,
+    epic_name:         t.epic?.name ?? null,
+    assignee_id:       t.assignee_id,
+    assignee_initials: t.assignee?.initials ?? null,
+    assignees:         t.taskAssignees.map(a => ({
+      id:           a.user.id,
+      name:         a.user.name,
+      initials:     a.user.initials,
+      avatar_color: a.user.avatar_color,
+    })),
+    due_date: t.due_date,
+  };
+}
 
 @Injectable()
 export class TasksRepository {
-  constructor(private readonly notificationsRepo: NotificationsRepository) {}
-
-  private get pool() {
-    return getPool();
-  }
-
-  /** Replace all assignees for a task inside an existing transaction client (or pool) */
-  private async replaceAssignees(
-    client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-    taskId: string,
-    assigneeIds: string[],
-  ): Promise<void> {
-    await client.query('DELETE FROM task_assignees WHERE task_id = $1', [taskId]);
-    for (const uid of assigneeIds) {
-      await client.query(
-        'INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-        [taskId, uid],
-      );
-    }
-  }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsRepo: NotificationsRepository,
+  ) {}
 
   async findByAssignee(userId: string): Promise<TaskItem[]> {
-    const { rows } = await this.pool.query(`
-      SELECT
-        t.id, t.sequential_id,
-        CONCAT(p.code, '-', t.sequential_id) AS identifier,
-        p.name   AS project_name,
-        p.code   AS project_code,
-        t.title, t.priority, t.status,
-        t.epic_id, e.name   AS epic_name,
-        t.assignee_id, u.initials AS assignee_initials,
-        ${ASSIGNEES_SUBQ} AS assignees,
-        t.due_date
-      FROM tasks t
-      JOIN  projects p ON p.id = t.project_id
-      LEFT JOIN epics e ON e.id = t.epic_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      WHERE t.id IN (SELECT task_id FROM task_assignees WHERE user_id = $1)
-        AND t.parent_task_id IS NULL
-      ORDER BY
-        CASE t.priority
-          WHEN 'urgente' THEN 1
-          WHEN 'alta'    THEN 2
-          WHEN 'media'   THEN 3
-          ELSE 4
-        END,
-        t.created_at DESC
-    `, [userId]);
-    return rows;
+    const tasks = await this.prisma.task.findMany({
+      where: {
+        parent_task_id: null,
+        taskAssignees:  { some: { user_id: userId } },
+      },
+      include: TASK_LIST_INCLUDE,
+    });
+    return tasks
+      .sort((a, b) =>
+        (PRIORITY_ORDER[a.priority] ?? 5) - (PRIORITY_ORDER[b.priority] ?? 5) ||
+        b.created_at.getTime() - a.created_at.getTime(),
+      )
+      .map(toTaskItem);
   }
 
   async findByProject(projectCode: string): Promise<TaskItem[]> {
-    const { rows } = await this.pool.query(`
-      SELECT
-        t.id, t.sequential_id,
-        CONCAT(p.code, '-', t.sequential_id) AS identifier,
-        p.name   AS project_name,
-        p.code   AS project_code,
-        t.title, t.priority, t.status,
-        t.epic_id, e.name   AS epic_name,
-        t.assignee_id, u.initials AS assignee_initials,
-        ${ASSIGNEES_SUBQ} AS assignees,
-        t.due_date
-      FROM tasks t
-      JOIN  projects p ON p.id = t.project_id
-      LEFT JOIN epics e ON e.id = t.epic_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      WHERE UPPER(p.code) = UPPER($1)
-        AND t.parent_task_id IS NULL
-      ORDER BY t.status, t.position, t.sequential_id
-    `, [projectCode]);
-    return rows;
+    const tasks = await this.prisma.task.findMany({
+      where: {
+        parent_task_id: null,
+        project: { code: { equals: projectCode, mode: 'insensitive' } },
+      },
+      include:  TASK_LIST_INCLUDE,
+      orderBy: [{ status: 'asc' }, { position: 'asc' }, { sequential_id: 'asc' }],
+    });
+    return tasks.map(toTaskItem);
   }
 
   async findAllWithFilters(filters: {
     projectCode?: string;
-    status?: string;
-    cycleId?: string;
+    status?:      string;
+    cycleId?:     string;
   }): Promise<TaskItem[]> {
-    const conditions: string[] = ['t.parent_task_id IS NULL'];
-    const params: string[] = [];
-    let idx = 1;
+    const where: Prisma.TaskWhereInput = { parent_task_id: null };
+    if (filters.projectCode) where.project  = { code: { equals: filters.projectCode, mode: 'insensitive' } };
+    if (filters.status)      where.status   = filters.status;
+    if (filters.cycleId)     where.cycle_id = filters.cycleId;
 
-    if (filters.projectCode) {
-      conditions.push(`UPPER(p.code) = UPPER($${idx++})`);
-      params.push(filters.projectCode);
-    }
-    if (filters.status) {
-      conditions.push(`t.status = $${idx++}`);
-      params.push(filters.status);
-    }
-    if (filters.cycleId) {
-      conditions.push(`t.cycle_id = $${idx++}`);
-      params.push(filters.cycleId);
-    }
-
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const { rows } = await this.pool.query(`
-      SELECT
-        t.id, t.sequential_id,
-        CONCAT(p.code, '-', t.sequential_id) AS identifier,
-        p.name     AS project_name,
-        p.code     AS project_code,
-        t.title, t.priority, t.status,
-        t.epic_id, e.name     AS epic_name,
-        t.assignee_id, u.initials AS assignee_initials,
-        ${ASSIGNEES_SUBQ} AS assignees,
-        t.due_date
-      FROM tasks t
-      JOIN  projects p ON p.id = t.project_id
-      LEFT JOIN epics e ON e.id = t.epic_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      ${where}
-      ORDER BY
-        CASE t.priority
-          WHEN 'urgente' THEN 1
-          WHEN 'alta'    THEN 2
-          WHEN 'media'   THEN 3
-          ELSE 4
-        END,
-        t.sequential_id
-    `, params);
-    return rows;
+    const tasks = await this.prisma.task.findMany({ where, include: TASK_LIST_INCLUDE });
+    return tasks
+      .sort((a, b) =>
+        (PRIORITY_ORDER[a.priority] ?? 5) - (PRIORITY_ORDER[b.priority] ?? 5) ||
+        a.sequential_id - b.sequential_id,
+      )
+      .map(toTaskItem);
   }
 
   async findRecentByTeam(limit = 20): Promise<TaskItem[]> {
-    const { rows } = await this.pool.query(`
-      SELECT
-        t.id, t.sequential_id,
-        CONCAT(p.code, '-', t.sequential_id) AS identifier,
-        p.name     AS project_name,
-        p.code     AS project_code,
-        t.title, t.priority, t.status,
-        t.epic_id, e.name     AS epic_name,
-        t.assignee_id, u.initials AS assignee_initials,
-        ${ASSIGNEES_SUBQ} AS assignees,
-        t.due_date
-      FROM tasks t
-      JOIN  projects p ON p.id = t.project_id
-      LEFT JOIN epics e ON e.id = t.epic_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      WHERE t.parent_task_id IS NULL
-      ORDER BY t.updated_at DESC
-      LIMIT $1
-    `, [limit]);
-    return rows;
+    const tasks = await this.prisma.task.findMany({
+      where:   { parent_task_id: null },
+      include: TASK_LIST_INCLUDE,
+      orderBy: { updated_at: 'desc' },
+      take:    limit,
+    });
+    return tasks.map(toTaskItem);
   }
 
   async create(dto: {
-    projectCode: string;
-    title: string;
-    priority: string;
-    status: string;
-    assigneeIds?: string[];
+    projectCode:   string;
+    title:         string;
+    priority:      string;
+    status:        string;
+    assigneeIds?:  string[];
     /** @deprecated pass assigneeIds instead */
-    assigneeId?: string | null;
-    epicId?: string | null;
-    cycleId?: string | null;
+    assigneeId?:   string | null;
+    epicId?:       string | null;
+    cycleId?:      string | null;
     parentTaskId?: string | null;
-    dueDate?: string | null;
-    createdBy: string;
+    dueDate?:      string | null;
+    createdBy:     string;
   }): Promise<TaskItem> {
-    // Normalize: prefer assigneeIds, fall back to legacy single assigneeId
     const ids = dto.assigneeIds?.length
       ? dto.assigneeIds
-      : dto.assigneeId
-        ? [dto.assigneeId]
-        : [];
+      : dto.assigneeId ? [dto.assigneeId] : [];
     const primaryId = ids[0] ?? null;
 
-    const { rows: [proj] } = await this.pool.query(
-      'SELECT id FROM projects WHERE UPPER(code) = UPPER($1)',
-      [dto.projectCode],
+    const project = await this.prisma.project.findFirst({
+      where:  { code: { equals: dto.projectCode, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (!project) throw new Error('Proyecto no encontrado');
+
+    const taskId = await this.prisma.$transaction(async (tx) => {
+      const [{ next_id }] = await tx.$queryRaw<[{ next_id: bigint }]>`
+        SELECT COALESCE(MAX(sequential_id), 0) + 1 AS next_id
+        FROM tasks WHERE project_id = ${project.id}::uuid
+      `;
+      const task = await tx.task.create({
+        data: {
+          project_id:     project.id,
+          sequential_id:  Number(next_id),
+          title:          dto.title,
+          priority:       dto.priority.toLowerCase(),
+          status:         dto.status,
+          assignee_id:    primaryId,
+          epic_id:        dto.epicId    || null,
+          cycle_id:       dto.cycleId   || null,
+          parent_task_id: dto.parentTaskId || null,
+          due_date:       dto.dueDate ? new Date(dto.dueDate) : null,
+          created_by:     dto.createdBy,
+          ...(ids.length && {
+            taskAssignees: { createMany: { data: ids.map(user_id => ({ user_id })) } },
+          }),
+        },
+        select: { id: true },
+      });
+      return task.id;
+    });
+
+    return toTaskItem(
+      await this.prisma.task.findUniqueOrThrow({ where: { id: taskId }, include: TASK_LIST_INCLUDE }),
     );
-    if (!proj) throw new Error('Proyecto no encontrado');
-
-    const { rows: [task] } = await this.pool.query(
-      `INSERT INTO tasks (project_id, title, priority, status, assignee_id, epic_id, cycle_id, parent_task_id, due_date, created_by, sequential_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-         COALESCE((SELECT MAX(sequential_id) FROM tasks WHERE project_id = $1), 0) + 1
-       )
-       RETURNING id`,
-      [
-        proj.id, dto.title, dto.priority.toLowerCase(), dto.status,
-        primaryId, dto.epicId || null,
-        dto.cycleId || null, dto.parentTaskId || null,
-        dto.dueDate || null, dto.createdBy,
-      ],
-    );
-
-    // Insert into task_assignees
-    await this.replaceAssignees(this.pool, task.id, ids);
-
-    const { rows: [full] } = await this.pool.query(`
-      SELECT
-        t.id, t.sequential_id,
-        CONCAT(p.code, '-', t.sequential_id) AS identifier,
-        p.name AS project_name, p.code AS project_code,
-        t.title, t.priority, t.status,
-        t.epic_id, e.name AS epic_name,
-        t.assignee_id, u.initials AS assignee_initials,
-        ${ASSIGNEES_SUBQ} AS assignees,
-        t.due_date
-      FROM tasks t
-      JOIN projects p ON p.id = t.project_id
-      LEFT JOIN epics e ON e.id = t.epic_id
-      LEFT JOIN users u ON u.id = t.assignee_id
-      WHERE t.id = $1
-    `, [task.id]);
-    return full;
   }
 
   async updateStatus(id: string, status: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2`,
-      [status, id],
-    );
+    await this.prisma.task.update({ where: { id }, data: { status, updated_at: new Date() } });
   }
 
   async update(id: string, dto: {
-    title?: string;
-    description?: string;
-    status?: string;
-    priority?: string;
-    assigneeIds?: string[] | null;
+    title?:        string;
+    description?:  string;
+    status?:       string;
+    priority?:     string;
+    assigneeIds?:  string[] | null;
     /** @deprecated pass assigneeIds instead */
-    assigneeId?: string | null;
-    epicId?: string | null;
-    cycleId?: string | null;
-    dueDate?: string | null;
+    assigneeId?:   string | null;
+    epicId?:       string | null;
+    cycleId?:      string | null;
+    dueDate?:      string | null;
     blockedReason?: string | null;
   }): Promise<void> {
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    let idx = 1;
-
-    // Normalize assignees
     const ids: string[] | null =
       dto.assigneeIds !== undefined
         ? (dto.assigneeIds ?? [])
@@ -266,96 +190,87 @@ export class TasksRepository {
 
     const primaryId = ids !== null ? (ids[0] ?? null) : undefined;
 
-    if (dto.title       !== undefined) { sets.push(`title = $${idx++}`);          params.push(dto.title); }
-    if (dto.description !== undefined) { sets.push(`description = $${idx++}`);    params.push(dto.description || null); }
-    if (dto.status      !== undefined) { sets.push(`status = $${idx++}`);         params.push(dto.status); }
-    if (dto.priority    !== undefined) { sets.push(`priority = $${idx++}`);       params.push(dto.priority); }
-    if (primaryId       !== undefined) { sets.push(`assignee_id = $${idx++}`);    params.push(primaryId); }
-    if ('epicId'        in dto)        { sets.push(`epic_id = $${idx++}`);        params.push(dto.epicId ?? null); }
-    if ('cycleId'       in dto)        { sets.push(`cycle_id = $${idx++}`);       params.push(dto.cycleId ?? null); }
-    if ('dueDate'       in dto)        { sets.push(`due_date = $${idx++}`);       params.push(dto.dueDate || null); }
-    if ('blockedReason' in dto)        { sets.push(`blocked_reason = $${idx++}`); params.push(dto.blockedReason || null); }
+    const data: Prisma.TaskUncheckedUpdateInput = {};
+    if (dto.title        !== undefined) data.title          = dto.title;
+    if (dto.description  !== undefined) data.description    = dto.description || null;
+    if (dto.status       !== undefined) data.status         = dto.status;
+    if (dto.priority     !== undefined) data.priority       = dto.priority;
+    if (primaryId        !== undefined) data.assignee_id    = primaryId;
+    if ('epicId'         in dto)        data.epic_id        = dto.epicId       ?? null;
+    if ('cycleId'        in dto)        data.cycle_id       = dto.cycleId      ?? null;
+    if ('dueDate'        in dto)        data.due_date       = dto.dueDate ? new Date(dto.dueDate) : null;
+    if ('blockedReason'  in dto)        data.blocked_reason = dto.blockedReason || null;
 
-    if (sets.length > 0) {
-      sets.push(`updated_at = NOW()`);
-      params.push(id);
-      await this.pool.query(
-        `UPDATE tasks SET ${sets.join(', ')} WHERE id = $${idx}`,
-        params,
-      );
+    if (ids !== null) {
+      data.taskAssignees = {
+        deleteMany: {},
+        createMany: { data: ids.map(user_id => ({ user_id })) },
+      };
     }
 
-    // Sync task_assignees if caller provided new assignee list
-    if (ids !== null) {
-      await this.replaceAssignees(this.pool, id, ids);
+    if (Object.keys(data).length > 0) {
+      data.updated_at = new Date();
+      await this.prisma.task.update({ where: { id }, data });
     }
   }
 
   async updateAndLog(id: string, userId: string, dto: {
-    title?: string;
-    description?: string;
-    status?: string;
-    priority?: string;
-    assigneeIds?: string[] | null;
+    title?:        string;
+    description?:  string;
+    status?:       string;
+    priority?:     string;
+    assigneeIds?:  string[] | null;
     /** @deprecated pass assigneeIds instead */
-    assigneeId?: string | null;
-    epicId?: string | null;
-    cycleId?: string | null;
-    dueDate?: string | null;
+    assigneeId?:   string | null;
+    epicId?:       string | null;
+    cycleId?:      string | null;
+    dueDate?:      string | null;
     blockedReason?: string | null;
   }): Promise<void> {
     await this.update(id, dto);
 
     const actions: string[] = [];
-    if (dto.title       !== undefined) actions.push(`cambió el título`);
-    if (dto.description !== undefined) actions.push(`actualizó la descripción`);
-    if (dto.status      !== undefined) actions.push(`cambió el estado a "${dto.status}"`);
-    if (dto.priority    !== undefined) actions.push(`cambió la prioridad a "${dto.priority}"`);
-    if (dto.assigneeIds !== undefined || 'assigneeId' in dto) {
-      const hasAssignee = (dto.assigneeIds?.length ?? 0) > 0 || !!dto.assigneeId;
-      actions.push(hasAssignee ? `actualizó los asignados` : `removió los asignados`);
+    if (dto.title        !== undefined) actions.push('cambió el título');
+    if (dto.description  !== undefined) actions.push('actualizó la descripción');
+    if (dto.status       !== undefined) actions.push(`cambió el estado a "${dto.status}"`);
+    if (dto.priority     !== undefined) actions.push(`cambió la prioridad a "${dto.priority}"`);
+    if (dto.assigneeIds  !== undefined || 'assigneeId' in dto) {
+      const has = (dto.assigneeIds?.length ?? 0) > 0 || !!dto.assigneeId;
+      actions.push(has ? 'actualizó los asignados' : 'removió los asignados');
     }
-    if ('epicId'        in dto)        actions.push(dto.epicId ? `asignó una épica` : `removió la épica`);
-    if ('cycleId'       in dto)        actions.push(dto.cycleId ? `asignó un ciclo` : `removió el ciclo`);
-    if ('dueDate'       in dto)        actions.push(dto.dueDate ? `cambió la fecha de entrega` : `removió la fecha de entrega`);
+    if ('epicId'        in dto) actions.push(dto.epicId    ? 'asignó una épica'          : 'removió la épica');
+    if ('cycleId'       in dto) actions.push(dto.cycleId   ? 'asignó un ciclo'           : 'removió el ciclo');
+    if ('dueDate'       in dto) actions.push(dto.dueDate   ? 'cambió la fecha de entrega' : 'removió la fecha de entrega');
 
-    for (const action of actions) {
-      await this.pool.query(
-        `INSERT INTO activity_log (task_id, user_id, action) VALUES ($1, $2, $3)`,
-        [id, userId, action],
-      );
+    if (actions.length > 0) {
+      await this.prisma.activityLog.createMany({
+        data: actions.map(action => ({ task_id: id, user_id: userId, action })),
+      });
     }
   }
 
-  async createComment(
-    taskId: string,
-    authorId: string,
-    body: string,
-  ) {
-    const { rows: [comment] } = await this.pool.query(
-      `INSERT INTO comments (task_id, author_id, body)
-       VALUES ($1, $2, $3)
-       RETURNING id, body, created_at`,
-      [taskId, authorId, body],
-    );
-    await this.pool.query(
-      `INSERT INTO activity_log (task_id, user_id, action)
-       VALUES ($1, $2, 'comentó en la tarea')`,
-      [taskId, authorId],
-    );
+  async createComment(taskId: string, authorId: string, body: string) {
+    const [comment] = await this.prisma.$transaction([
+      this.prisma.comment.create({
+        data:   { task_id: taskId, author_id: authorId, body },
+        select: { id: true, body: true, created_at: true },
+      }),
+      this.prisma.activityLog.create({
+        data: { task_id: taskId, user_id: authorId, action: 'comentó en la tarea' },
+      }),
+    ]);
 
-    /* ── Mention notifications ──────────────────────── */
-    const { rows: allUsers } = await this.pool.query(
-      `SELECT id, name FROM users WHERE id != $1 AND is_active = true`,
-      [authorId],
-    );
-    const sortedUsers = allUsers.sort((a: { name: string }, b: { name: string }) => b.name.length - a.name.length);
+    // Mention notifications
+    const allUsers = await this.prisma.user.findMany({
+      where:  { id: { not: authorId }, is_active: true },
+      select: { id: true, name: true },
+    });
+    const sorted   = [...allUsers].sort((a, b) => b.name.length - a.name.length);
     const notified = new Set<string>();
-    for (const u of sortedUsers) {
+    for (const u of sorted) {
       if (notified.has(u.id)) continue;
       const escaped = u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pattern = new RegExp(`@${escaped}(?:\\s|@|$)`, 'i');
-      if (pattern.test(body)) {
+      if (new RegExp(`@${escaped}(?:\\s|@|$)`, 'i').test(body)) {
         notified.add(u.id);
         await this.notificationsRepo.createMentionNotification({
           recipientId: u.id,
@@ -370,75 +285,84 @@ export class TasksRepository {
   }
 
   async logActivity(taskId: string, userId: string, action: string) {
-    await this.pool.query(
-      `INSERT INTO activity_log (task_id, user_id, action)
-       VALUES ($1, $2, $3)`,
-      [taskId, userId, action],
-    );
+    await this.prisma.activityLog.create({ data: { task_id: taskId, user_id: userId, action } });
   }
 
   async findById(id: string) {
-    const { rows: [task] } = await this.pool.query(`
-      SELECT
-        t.id, t.sequential_id,
-        CONCAT(p.code, '-', t.sequential_id) AS identifier,
-        t.title, t.description, t.status, t.priority,
-        t.due_date, t.blocked_reason, t.created_at,
-        t.assignee_id,
-        u_a.initials AS assignee_initials, u_a.name AS assignee_name,
-        u_a.avatar_url AS assignee_avatar_url, u_a.avatar_color AS assignee_avatar_color,
-        u_c.initials AS creator_initials,  u_c.name AS creator_name,
-        u_c.avatar_url AS creator_avatar_url, u_c.avatar_color AS creator_avatar_color,
-        p.code AS project_code, p.name AS project_name,
-        t.epic_id, e.name AS epic_name,
-        t.cycle_id,
-        COALESCE((
-          SELECT json_agg(json_build_object(
-                   'id',           ua.id,
-                   'name',         ua.name,
-                   'initials',     ua.initials,
-                   'avatar_color', ua.avatar_color,
-                   'avatar_url',   ua.avatar_url
-                 ) ORDER BY ta.assigned_at)
-          FROM task_assignees ta
-          JOIN users ua ON ua.id = ta.user_id
-          WHERE ta.task_id = t.id
-        ), '[]'::json) AS assignees
-      FROM tasks t
-      JOIN  projects p  ON p.id = t.project_id
-      LEFT JOIN users u_a ON u_a.id = t.assignee_id
-      LEFT JOIN users u_c ON u_c.id = t.created_by
-      LEFT JOIN epics  e  ON e.id  = t.epic_id
-      WHERE t.id = $1
-    `, [id]);
+    const task = await this.prisma.task.findUnique({
+      where:   { id },
+      include: {
+        project:  { select: { code: true, name: true } },
+        epic:     { select: { name: true } },
+        assignee: { select: { initials: true, name: true, avatar_url: true, avatar_color: true } },
+        creator:  { select: { initials: true, name: true, avatar_url: true, avatar_color: true } },
+        taskAssignees: {
+          include: { user: { select: { id: true, name: true, initials: true, avatar_color: true, avatar_url: true } } },
+          orderBy: { assigned_at: 'asc' },
+        },
+        subtasks: {
+          include: { project: { select: { code: true } } },
+          orderBy: { sequential_id: 'asc' },
+        },
+        comments: {
+          include: { author: { select: { initials: true, name: true, avatar_url: true, avatar_color: true } } },
+          orderBy: { created_at: 'asc' },
+        },
+        activityLogs: {
+          include: { user: { select: { initials: true, name: true, avatar_url: true, avatar_color: true } } },
+          orderBy: { created_at: 'desc' },
+        },
+      },
+    });
     if (!task) return null;
 
-    const { rows: subtasks } = await this.pool.query(`
-      SELECT t.id, t.sequential_id,
-             CONCAT(p.code, '-', t.sequential_id) AS identifier,
-             t.title, t.status
-      FROM tasks t
-      JOIN projects p ON p.id = t.project_id
-      WHERE t.parent_task_id = $1
-      ORDER BY t.sequential_id
-    `, [id]);
-
-    const { rows: comments } = await this.pool.query(`
-      SELECT c.id, c.body, c.created_at, u.initials, u.name, u.avatar_url, u.avatar_color
-      FROM comments c
-      JOIN users u ON u.id = c.author_id
-      WHERE c.task_id = $1
-      ORDER BY c.created_at ASC
-    `, [id]);
-
-    const { rows: activity } = await this.pool.query(`
-      SELECT al.id, al.action, al.created_at, u.initials, u.name, u.avatar_url, u.avatar_color
-      FROM activity_log al
-      JOIN users u ON u.id = al.user_id
-      WHERE al.task_id = $1
-      ORDER BY al.created_at DESC
-    `, [id]);
-
-    return { ...task, subtasks, comments, activity };
+    return {
+      ...task,
+      identifier:           `${task.project.code}-${task.sequential_id}`,
+      project_code:         task.project.code,
+      project_name:         task.project.name,
+      epic_name:            task.epic?.name              ?? null,
+      assignee_initials:    task.assignee?.initials       ?? null,
+      assignee_name:        task.assignee?.name           ?? null,
+      assignee_avatar_url:  task.assignee?.avatar_url     ?? null,
+      assignee_avatar_color: task.assignee?.avatar_color  ?? null,
+      creator_initials:     task.creator?.initials        ?? null,
+      creator_name:         task.creator?.name            ?? null,
+      creator_avatar_url:   task.creator?.avatar_url      ?? null,
+      creator_avatar_color: task.creator?.avatar_color    ?? null,
+      assignees: task.taskAssignees.map(a => ({
+        id:           a.user.id,
+        name:         a.user.name,
+        initials:     a.user.initials,
+        avatar_color: a.user.avatar_color,
+        avatar_url:   a.user.avatar_url,
+      })),
+      subtasks: task.subtasks.map(s => ({
+        id:            s.id,
+        sequential_id: s.sequential_id,
+        identifier:    `${s.project.code}-${s.sequential_id}`,
+        title:         s.title,
+        status:        s.status,
+      })),
+      comments: task.comments.map(c => ({
+        id:           c.id,
+        body:         c.body,
+        created_at:   c.created_at,
+        initials:     c.author.initials,
+        name:         c.author.name,
+        avatar_url:   c.author.avatar_url,
+        avatar_color: c.author.avatar_color,
+      })),
+      activity: task.activityLogs.map(a => ({
+        id:           a.id,
+        action:       a.action,
+        created_at:   a.created_at,
+        initials:     a.user.initials,
+        name:         a.user.name,
+        avatar_url:   a.user.avatar_url,
+        avatar_color: a.user.avatar_color,
+      })),
+    };
   }
 }
+

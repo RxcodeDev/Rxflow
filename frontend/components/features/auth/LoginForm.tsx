@@ -91,9 +91,32 @@ export default function LoginForm({ onSubmit, error }: LoginFormProps) {
 
         {/* Global error */}
         {error && (
-          <p className="text-[0.8125rem] text-[var(--c-danger)] text-center mb-4 px-2">
-            {error}
-          </p>
+          <div
+            role="alert"
+            className="flex items-start gap-2.5 rounded-xl border px-3.5 py-3 mb-4"
+            style={{
+              background: 'color-mix(in srgb, var(--c-danger) 10%, transparent)',
+              borderColor: 'color-mix(in srgb, var(--c-danger) 30%, transparent)',
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0 mt-0.5 text-[var(--c-danger)]"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p className="text-[0.8125rem] text-[var(--c-danger)] leading-snug">{error}</p>
+          </div>
         )}
 
         {/* Form */}

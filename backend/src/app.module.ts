@@ -11,6 +11,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { SeedModule } from './modules/seed/seed.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { LicensesModule } from './modules/licenses/licenses.module';
+import { WikiModule } from './modules/wiki/wiki.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LicensesModule } from './modules/licenses/licenses.module';
     SeedModule,
     WorkspacesModule,
     LicensesModule,
+    WikiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

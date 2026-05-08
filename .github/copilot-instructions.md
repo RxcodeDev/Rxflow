@@ -73,10 +73,10 @@ Backend base URL: `http://localhost:3000`
 ## Demo Credentials (seed)
 
 ```
-ana@rxflow.io  / password123
-luis@rxflow.io / password123
-sara@rxflow.io / password123
-juan@rxflow.io / password123
+ana@rxflow.io  / audit1234
+luis@rxflow.io / audit1234
+sara@rxflow.io / audit1234
+juan@rxflow.io / audit1234
 ```
 
 Seed endpoint: `POST /seed` — populates demo data (dev only).

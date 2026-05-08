@@ -41,12 +41,18 @@ src/
   modules/
     auth/                      ← register, login, /me
     users/                     ← GET /users
-    projects/                  ← GET /projects, GET /projects/:code
+    projects/                  ← GET /projects, GET /projects/:code, GET/POST/PATCH/DELETE /projects/:code/epics
     tasks/                     ← GET/POST/PATCH /tasks, /tasks/mine, /tasks/:id
     cycles/                    ← GET /cycles, GET /cycles/:id
     notifications/             ← GET /notifications, PATCH mark-read
     seed/                      ← POST /seed, GET /seed/status
-    workspaces/                ← Workspaces CRUD
+    workspaces/                ← Workspaces CRUD + members + projects (raw pg)
+    licenses/                  ← Licenses CRUD + members + workspaces (Prisma)
+    wiki/                      ← Wiki pages CRUD — multi-tenant by license_id (Prisma)
+
+  prisma/
+    prisma.module.ts           ← PrismaModule (globalForRoot)
+    prisma.service.ts          ← PrismaService extends PrismaClient
 
   shared/
     constants/                 ← roles.constant.ts, messages.constant.ts
@@ -74,8 +80,9 @@ The `TransformInterceptor` wraps all successful responses globally:
 
 ## Database Layer
 
-**No ORM** (no TypeORM, no Prisma). Raw SQL via `pg` library.
+**Two access patterns — never mix within the same module:**
 
+1. **Raw SQL via `pg`** (default for most modules):
 ```ts
 // Pattern in every repository
 import { getPool } from '@/config/database.config';
@@ -94,11 +101,23 @@ export class FooRepository {
 }
 ```
 
+2. **Prisma** (only `licenses` module — `PrismaService`):
+```ts
+import { PrismaService } from '@/prisma/prisma.service';
+
+@Injectable()
+export class LicensesRepository {
+  constructor(private readonly prisma: PrismaService) {}
+  // use this.prisma.license.findMany() etc.
+}
+```
+
 **Rules:**
-- Always use parameterized queries (`$1, $2, ...`) — never string interpolation
+- Always use parameterized queries (`$1, $2, ...`) in raw pg — never string interpolation
 - `getPool()` returns the shared singleton pool (max 20 connections)
 - Complex aggregations use `LEFT JOIN LATERAL` and JSON aggregation
 - All INSERT/UPDATE operations use `ON CONFLICT` for upsert safety
+- `tasks.status` and `tasks.priority` are **TEXT columns** (not PostgreSQL ENUM) — never redefine as ENUM
 
 ---
 
@@ -171,6 +190,10 @@ GET  /auth/me
 GET  /projects
 GET  /projects/:code
 GET  /projects/:code/tasks
+GET  /projects/:code/epics
+POST /projects/:code/epics      { name, description?, parent_epic_id? }
+PATCH /projects/:code/epics/:epicId
+DELETE /projects/:code/epics/:epicId
 
 GET  /tasks/mine             ← uses @CurrentUser()
 GET  /tasks?projectCode=&status=&cycleId=
@@ -190,6 +213,28 @@ PATCH /notifications/:id/read
 PATCH /notifications/read-all
 
 GET  /users
+
+GET  /workspaces
+GET  /workspaces/unassigned-projects
+GET  /workspaces/:id
+POST /workspaces             { name, description?, color?, icon? }
+PATCH /workspaces/:id
+DELETE /workspaces/:id
+POST /workspaces/:id/projects     { projectId }
+DELETE /workspaces/:id/projects/:projectId
+POST /workspaces/:id/members      { userId }
+DELETE /workspaces/:id/members/:userId
+
+POST /licenses               { name }
+GET  /licenses
+GET  /licenses/:id
+POST /licenses/:id/members   { userId, role? }
+DELETE /licenses/:id/members/:userId
+POST /licenses/:id/assign-workspace   { workspaceId }
+DELETE /licenses/:id/assign-workspace { workspaceId }
+POST /licenses/:id/assign-project     { projectId }
+DELETE /licenses/:id/assign-project   { projectId }
+GET  /licenses/:id/my-workspaces
 
 POST /seed                   ← dev only (throws ForbiddenException in production)
 GET  /seed/status            → { users, projects, tasks, cycles }
@@ -309,12 +354,22 @@ Throws `ForbiddenException` in `NODE_ENV=production`.
 
 ## Database Migrations
 
-Located in `database/migrations/`, Flyway naming convention:
+Located in `database/migrations/`, Flyway naming convention.
+Tracked in `_raw_migrations` table; run by `entrypoint.sh` before `npx prisma migrate deploy`.
+
 ```
-V001__initial_schema.sql   ← users, projects, tasks, cycles, notifications
-V002__add_extra_views.sql  ← project extra_views column
-V003__workspaces.sql       ← workspaces table
+V001__initial_schema.sql     ← users, projects, tasks, cycles, notifications (tasks columns = TEXT)
+V002__add_extra_views.sql    ← project extra_views column
+V003__workspaces.sql         ← workspaces table
+V004__notification_prefs.sql ← notification preferences
+V005__avatar_color.sql       ← avatar_color column on users
+V006__epic_parent.sql        ← parent_epic_id on epics
+V007__task_assignees.sql     ← task_assignees join table
+V008__tasks_enum_to_text.sql ← idempotent: converts status/priority to TEXT if still ENUM
 ```
+
+> **Critical:** `tasks.status` and `tasks.priority` must be `TEXT`. V008 auto-converts ENUM→TEXT on deploy.
+> Never add `@db.VarChar` or ENUM types to the `status`/`priority` fields in schema.prisma.
 
 ---
 

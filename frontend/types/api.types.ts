@@ -130,3 +130,44 @@ export interface WorkspaceSummary {
   projects: ProjectSummary[];
 }
 
+export interface License {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiPageSummary {
+  id: string;
+  title: string;
+  slug: string;
+  workspace_id: string;
+  project_code: string | null;
+  epic_id: string | null;
+  task_id: string | null;
+  parent_page_id: string | null;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  is_archived: boolean;
+}
+
+export interface WikiPageDetail extends WikiPageSummary {
+  /** Tiptap ProseMirror JSON document */
+  content: Record<string, unknown>;
+  children: Pick<WikiPageSummary, 'id' | 'title' | 'slug'>[];
+  breadcrumb: Array<{ id: string; title: string }>;
+}
+
+export interface WikiTreeNode {
+  id: string;
+  title: string;
+  slug: string;
+  parent_page_id: string | null;
+  workspace_id: string;
+  project_code: string | null;
+  children: WikiTreeNode[];
+}
+

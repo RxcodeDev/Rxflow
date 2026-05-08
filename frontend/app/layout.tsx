@@ -18,6 +18,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Rxflow',
   description: 'Plataforma de gestión de proyectos corporativos',
+  icons: {
+    icon: [
+      { url: '/favicon.png', type: 'image/png', sizes: '512x512' },
+      { url: '/favicon.png', type: 'image/png', sizes: '192x192' },
+      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon.png', type: 'image/png', sizes: '16x16' },
+    ],
+    apple: { url: '/favicon.png', type: 'image/png', sizes: '180x180' },
+    shortcut: '/favicon.png',
+  },
 };
 
 export default function RootLayout({

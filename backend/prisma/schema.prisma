@@ -7,7 +7,8 @@
 // =============================================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -66,6 +67,11 @@ model User {
   workspacesCreated Workspace[]       @relation("WorkspaceCreator")
   workspaceMembers  WorkspaceMember[]
   projectMembers    ProjectMember[]
+  assignedTasks     Task[]            @relation("TaskPrimaryAssignee")
+  createdTasks      Task[]            @relation("TaskCreator")
+  taskAssignees     TaskAssignee[]    @relation("UserTaskAssignees")
+  comments          Comment[]         @relation("CommentAuthor")
+  activityLogs      ActivityLog[]     @relation("ActivityLogUser")
 
   @@map("users")
 }
@@ -115,6 +121,7 @@ model Project {
 
   members    ProjectMember[]
   workspaces WorkspaceProject[]
+  tasks      Task[]
 
   @@map("projects")
 }
@@ -141,4 +148,121 @@ model WorkspaceProject {
 
   @@id([workspace_id, project_id])
   @@map("workspace_projects")
+}
+
+// ── Task domain ──────────────────────────────────────────────────────────────
+
+model Epic {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id String   @db.Uuid
+  name       String   @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @db.Timestamptz
+
+  tasks Task[]
+
+  @@map("epics")
+}
+
+model Task {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sequential_id  Int
+  project_id     String    @db.Uuid
+  epic_id        String?   @db.Uuid
+  cycle_id       String?   @db.Uuid
+  parent_task_id String?   @db.Uuid
+  assignee_id    String?   @db.Uuid
+  title          String    @db.VarChar(255)
+  description    String?
+  status         String    @default("backlog")
+  priority       String    @default("media")
+  position       Int       @default(0)
+  due_date       DateTime? @db.Timestamptz
+  blocked_reason String?
+  created_by     String    @db.Uuid
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @default(now()) @db.Timestamptz
+
+  project       Project        @relation(fields: [project_id], references: [id])
+  epic          Epic?          @relation(fields: [epic_id], references: [id])
+  assignee      User?          @relation("TaskPrimaryAssignee", fields: [assignee_id], references: [id])
+  creator       User           @relation("TaskCreator", fields: [created_by], references: [id])
+  parentTask    Task?          @relation("SubTasks", fields: [parent_task_id], references: [id])
+  subtasks      Task[]         @relation("SubTasks")
+  taskAssignees TaskAssignee[]
+  comments      Comment[]
+  activityLogs  ActivityLog[]
+
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  task_id     String   @db.Uuid
+  user_id     String   @db.Uuid
+  assigned_at DateTime @default(now()) @db.Timestamptz
+
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user User @relation("UserTaskAssignees", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([task_id, user_id])
+  @@map("task_assignees")
+}
+
+model Comment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  task_id    String   @db.Uuid
+  author_id  String   @db.Uuid
+  body       String
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @db.Timestamptz
+
+  task   Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  author User @relation("CommentAuthor", fields: [author_id], references: [id])
+
+  @@map("comments")
+}
+
+model ActivityLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  task_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  action     String
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user User @relation("ActivityLogUser", fields: [user_id], references: [id])
+
+  @@map("activity_log")
+}
+
+// ── Wiki domain ───────────────────────────────────────────────────────────────
+// Tenant: every page belongs to a workspace_id.
+// license_id is kept as nullable metadata (legacy, not used for access control).
+
+model WikiPage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id   String   @db.Uuid
+  license_id     String?  @db.Uuid
+  title          String   @db.VarChar(500)
+  slug           String   @db.VarChar(255)
+  content        Json
+  project_code   String?  @db.VarChar(4)
+  epic_id        String?  @db.Uuid
+  task_id        String?  @db.Uuid
+  parent_page_id String?  @db.Uuid
+  created_by     String   @db.Uuid
+  updated_by     String?  @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz
+  is_archived    Boolean  @default(false)
+
+  parent   WikiPage?  @relation("WikiPageHierarchy", fields: [parent_page_id], references: [id], onDelete: SetNull)
+  children WikiPage[] @relation("WikiPageHierarchy")
+
+  @@unique([workspace_id, slug])
+  @@index([workspace_id])
+  @@index([project_code])
+  @@index([epic_id])
+  @@index([task_id])
+  @@map("wiki_pages")
 }

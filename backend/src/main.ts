@@ -1,3 +1,4 @@
+import './instrument'; // Sentry — must be imported first
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';

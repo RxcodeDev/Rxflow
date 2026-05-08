@@ -14,15 +14,26 @@ app/
   (dashboard)/               ← Protected area — Sidebar + BottomNav layout
     layout.tsx               ← UIProvider + Sidebar + Navbar + CreateTaskModal + TaskDrawer
     inicio/page.tsx          ← Dashboard overview ('use client', real API data)
+    dashboard/page.tsx       ← Vista de dashboard alternativa ('use client')
     mis-tareas/page.tsx      ← Mis tareas grouped by status ('use client')
     inbox/page.tsx           ← Notificaciones — mark read on click ('use client')
     proyectos/page.tsx       ← Lista de proyectos — tabs Activos/Archivados/Todos ('use client')
     proyectos/[id]/board/    ← Kanban board por proyecto ('use client')
-    cycles/page.tsx          ← Cycles agrupados por estado ('use client')
+    proyectos/[id]/lista/    ← Vista lista
+    proyectos/[id]/backlog/  ← Backlog
+    proyectos/[id]/epicas/   ← Épicas del proyecto
+    proyectos/[id]/cycles/   ← Cycles del proyecto
+    proyectos/[id]/tareas/[taskId]/  ← Detalle de tarea
+    cycles/page.tsx          ← Cycles globales agrupados por estado ('use client')
     miembros/page.tsx        ← Tabla+cards de miembros ('use client')
-    preferencias/page.tsx    ← Perfil/notificaciones/apariencia (Server Component, visual only)
+    espacios/page.tsx        ← Workspaces ('use client')
+    perfil/page.tsx          ← Perfil de usuario ('use client')
+    preferencias/page.tsx    ← Preferencias (Server Component, visual only)
     integraciones/page.tsx   ← Integraciones grid (Server Component, visual only)
-    herramientas/            ← documentos / reportes / calendario / wiki (PENDING)
+    herramientas/calendario/ ← Calendario
+    herramientas/documentos/ ← Documentos
+    herramientas/reportes/   ← Reportes
+    herramientas/wiki/       ← Wiki
 
 components/
   ui/                        ← Button, Input, Card, Modal, Spinner, ConfirmModal
@@ -49,8 +60,9 @@ lib/
   validations.ts             ← Client-side form validators
 
 types/
-  api.types.ts               ← ApiWrapped<T>, ProjectSummary, TaskItem, CycleSummary,
-                                MemberItem, NotificationItem
+  api.types.ts               ← ApiWrapped<T>, ProjectSummary, TaskItem, TaskAssignee,
+                                CycleSummary, MemberItem, NotificationItem, EpicItem,
+                                WorkspaceSummary, WorkspaceMember, PaginatedResponse
 hooks/
   useAuth.ts
   useDebounce.ts
@@ -117,9 +129,16 @@ ProjectSummary {
   team[], active_cycle
 }
 
+TaskAssignee {
+  id, name, initials, avatar_color, avatar_url
+}
+
 TaskItem {
   id, sequential_id, identifier, project_name, project_code,
-  title, priority, status, epic_name, assignee_initials, due_date
+  title, priority, status, epic_id, epic_name,
+  assignees: TaskAssignee[],
+  /** @deprecated */ assignee_id, /** @deprecated */ assignee_initials,
+  due_date
 }
 
 CycleSummary {
@@ -129,7 +148,8 @@ CycleSummary {
 }
 
 MemberItem {
-  id, name, email, role, initials,
+  id, name, email, role, effective_role, initials,
+  avatar_url, avatar_color,
   presence_status, last_seen_at, projects[], tasks_open
 }
 
@@ -139,6 +159,21 @@ NotificationItem {
   task: { id, identifier, title } | null,
   project: { name } | null
 }
+
+EpicItem {
+  id, name, description, status, parent_epic_id, parent_epic_name
+}
+
+WorkspaceMember { id, name, initials }
+
+WorkspaceSummary {
+  id, name, description, color, icon,
+  created_by, created_at, updated_at,
+  members: WorkspaceMember[],
+  projects: ProjectSummary[]
+}
+
+PaginatedResponse<T> { data: T[], total, page, limit }
 ```
 
 ---
@@ -206,6 +241,37 @@ export default function FooPage() {
   // render data...
 }
 ```
+
+---
+
+## ⛔ REGLA ESTRICTA: Nunca usar `<select>` nativo
+
+**PROHIBIDO** usar `<select>` nativo en ningún formulario del proyecto.  
+**SIEMPRE** usar un componente custom dropdown con este patrón:
+
+### Patrón obligatorio para selects
+
+Cualquier campo select debe cumplir:
+
+1. **Trigger estilizado** — botón con borde `var(--c-border)`, `rounded-[0.625rem]`, ícono a la izquierda representando el ítem seleccionado, flecha chevron a la derecha.
+2. **Dropdown propio** — `position: absolute`, `z-50`, `bg-[var(--c-bg)]`, `border-[var(--c-border)]`, `rounded-xl`, `shadow-[0_8px_24px_rgba(0,0,0,0.12)]`.
+3. **Búsqueda interna** — input con ícono lupa al inicio del dropdown para filtrar opciones.
+4. **Íconos por opción** — cada opción lleva un ícono SVG inline (Feather) que represente su categoría o estado.
+5. **Tooltip en hover** — `position: fixed` para escapar `overflow-hidden`, con `bg-[var(--c-bg)]`, `border-[var(--c-border)]`, flecha CSS triangular doble (borde + fill).
+6. **Chips de categoría** — si aplica, mostrar a qué grupo/proyecto/categoría pertenece cada opción con color único derivado del identificador (hash → paleta de colores).
+7. **Cero `<select>` nativo** — no usar `<select>` ni `NativeSelect` para dropdowns que el usuario ve. Los `NativeSelect` solo están permitidos para selectores de workspace/proceso padre donde no hay íconos ni búsqueda requeridos (campos de metadatos simples).
+
+### Componente de referencia
+
+`components/features/wiki/TaskSearchSelect.tsx` — implementación completa con:
+- Paleta de colores por proyecto via hash determinista
+- Estado de carga (spinner)
+- Íconos por status de tarea (done ✓, in_progress reloj, in_review lupa, cancelled ×, backlog círculo)
+- Tooltip fixed con nombre completo + proyecto coloreado
+- Búsqueda en tiempo real
+- Cierre con Escape y clic fuera
+
+**Al crear un nuevo select**, copiar como base `TaskSearchSelect.tsx` y adaptarlo al dominio correspondiente.
 
 ---
 
@@ -346,12 +412,17 @@ POST /auth/login             { email, password }  → returns JWT
 GET  /projects               → ApiWrapped<ProjectSummary[]>
 GET  /projects/:code         → ApiWrapped<ProjectSummary>
 GET  /projects/:code/tasks   → ApiWrapped<TaskItem[]>
+GET  /projects/:code/epics   → ApiWrapped<EpicItem[]>
+POST /projects/:code/epics   { name, description?, parent_epic_id? }
+PATCH /projects/:code/epics/:epicId  { name?, description?, status?, parent_epic_id? }
+DELETE /projects/:code/epics/:epicId
 
 GET  /tasks/mine             → ApiWrapped<TaskItem[]>
 GET  /tasks?projectCode=&status=&cycleId=  → ApiWrapped<TaskItem[]>
 GET  /tasks/:id              → ApiWrapped<TaskDetail>
 POST /tasks                  → create task
 PATCH /tasks/:id             → update task fields
+POST /tasks/:id/comments     { content }
 
 GET  /cycles                 → ApiWrapped<CycleSummary[]>
 GET  /cycles/:id             → ApiWrapped<CycleSummary>
@@ -363,6 +434,24 @@ PATCH /notifications/read-all   → mark all read
 
 GET  /users                  → ApiWrapped<MemberItem[]>
 
+GET  /workspaces             → ApiWrapped<WorkspaceSummary[]>
+GET  /workspaces/unassigned-projects → ApiWrapped<ProjectSummary[]>
+GET  /workspaces/:id         → ApiWrapped<WorkspaceSummary>
+POST /workspaces             { name, description?, color?, icon? }
+PATCH /workspaces/:id        { ...campos }
+DELETE /workspaces/:id
+POST /workspaces/:id/projects  { projectId }
+DELETE /workspaces/:id/projects/:projectId
+POST /workspaces/:id/members   { userId }
+DELETE /workspaces/:id/members/:userId
+
+POST /licenses               { name }
+GET  /licenses               → License[]
+GET  /licenses/:id           → License
+GET  /licenses/:id/my-workspaces → ApiWrapped<WorkspaceSummary[]>
+POST /licenses/:id/members   { userId, role? }
+DELETE /licenses/:id/members/:userId
+
 POST /seed                   → populate demo data (dev only)
 GET  /seed/status            → { users, projects, tasks, cycles }
 ```
@@ -371,9 +460,5 @@ GET  /seed/status            → { users, projects, tasks, cycles }
 
 ## Pending Work
 
-- `herramientas/documentos/page.tsx` — not created
-- `herramientas/reportes/page.tsx` — not created
-- `herramientas/calendario/page.tsx` — not created
-- `herramientas/wiki/page.tsx` — not created
 - `TaskDrawer` — still uses DEMO_TASK / DEMO_SUBTASKS / DEMO_COMMENTS (needs real API)
 - `CreateTaskModal` — PROJECTS/EPICS/ASSIGNEES still hardcoded (needs real API)
