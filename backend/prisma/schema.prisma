@@ -250,6 +250,7 @@ model WikiPage {
   epic_id        String?  @db.Uuid
   task_id        String?  @db.Uuid
   parent_page_id String?  @db.Uuid
+  icon           String?  @db.VarChar(10)
   created_by     String   @db.Uuid
   updated_by     String?  @db.Uuid
   created_at     DateTime @default(now()) @db.Timestamptz

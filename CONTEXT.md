@@ -63,18 +63,18 @@ app/(dashboard)/integraciones/page.tsx          ← Integraciones (Server Compon
 app/(dashboard)/herramientas/calendario/page.tsx
 app/(dashboard)/herramientas/documentos/page.tsx
 app/(dashboard)/herramientas/reportes/page.tsx
-app/(dashboard)/herramientas/wiki/page.tsx              ← Wiki home — árbol + lista de páginas ('use client')
+app/(dashboard)/herramientas/wiki/page.tsx              ← Wiki home — árbol + lista de páginas ('use client', header apilado en mobile)
 app/(dashboard)/herramientas/wiki/nueva/page.tsx        ← Crear nueva página wiki ('use client')
-app/(dashboard)/herramientas/wiki/[id]/page.tsx         ← Ver página wiki ('use client')
-app/(dashboard)/herramientas/wiki/[id]/editar/page.tsx  ← Editar página wiki ('use client')
+app/(dashboard)/herramientas/wiki/[id]/page.tsx         ← Ver página wiki ('use client', trigger icon-only de acciones en cabecera mobile + sidebar solo desktop)
+app/(dashboard)/herramientas/wiki/[id]/editar/page.tsx  ← Editar página wiki ('use client', editor primero y configuración plegable en mobile)
 
 components/features/wiki/
-  WikiEditor.tsx       ← Editor Tiptap (StarterKit + Link + Placeholder)
+  WikiEditor.tsx       ← Editor Tiptap (StarterKit + Link + Placeholder, toolbar horizontal scroll en mobile)
   WikiViewer.tsx       ← Render read-only Tiptap JSON
-  WikiPageTree.tsx     ← Árbol recursivo colapsable
+  WikiPageTree.tsx     ← Árbol recursivo colapsable (targets táctiles ampliados en mobile)
   WikiBreadcrumb.tsx   ← Breadcrumb de jerarquía
   WikiRelationBadges.tsx ← Badges de workspace/proyecto/épica/tarea
-  WikiPageCard.tsx     ← Card de página en vista grid
+  WikiPageCard.tsx     ← Card de página en vista grid (contenedor clickable, sin Link padre, menú visible en touch)
   WikiRelationPicker.tsx ← Pickers para vincular página a entidades
 
 components/layouts/Sidebar.tsx    ← Sidebar desktop ('use client')
@@ -92,6 +92,15 @@ types/api.types.ts                ← ApiWrapped<T>, ProjectSummary, TaskItem, T
                                      License, WikiPageSummary, WikiPageDetail, WikiTreeNode
 middleware.ts                     ← Protege rutas, redirige a /login si no hay cookie rxflow_token
 ```
+
+Notas Wiki:
+- `components/features/wiki/wikiIcons.ts` debe generar keys únicas por primitiva SVG para evitar warnings de React al abrir el selector de iconos.
+- `components/features/wiki/WikiPageCard.tsx` no debe envolver toda la card en `Link` si contiene acciones internas o subpáginas navegables.
+- El borrado desde `app/(dashboard)/herramientas/wiki/page.tsx` elimina la página y todos sus descendientes del estado local.
+- En mobile, `app/(dashboard)/herramientas/wiki/page.tsx` debe apilar selector, búsqueda y CTA a ancho completo; evitar reutilizar la barra horizontal de desktop.
+- En mobile, `app/(dashboard)/herramientas/wiki/[id]/page.tsx` debe priorizar lectura: usar trigger icon-only de acciones integrado en cabecera, evitar FABs/círculos flotantes forzados y reservar el sidebar completo para `md+`.
+- En mobile, `app/(dashboard)/herramientas/wiki/[id]/editar/page.tsx` debe priorizar el editor: contenido arriba y configuración como panel plegable secundario debajo.
+- En mobile, `components/features/wiki/WikiPageCard.tsx` no debe depender de `group-hover` para mostrar el menú de opciones.
 
 ### Backend (`backend/src/`)
 ```

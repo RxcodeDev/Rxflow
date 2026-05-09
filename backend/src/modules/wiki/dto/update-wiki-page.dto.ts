@@ -36,4 +36,9 @@ export class UpdateWikiPageDto {
   @IsOptional()
   @IsUUID()
   parentPageId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  icon?: string | null;
 }

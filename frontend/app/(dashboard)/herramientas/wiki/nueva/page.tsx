@@ -7,6 +7,7 @@ import type { ApiWrapped, EpicItem, WikiPageDetail, WikiPageSummary, WorkspaceSu
 import WikiEditor from '@/components/features/wiki/WikiEditor';
 import TaskSearchSelect, { type TaskWithProject } from '@/components/features/wiki/TaskSearchSelect';
 import SearchSelect from '@/components/ui/SearchSelect';
+import EmojiPicker from '@/components/features/wiki/EmojiPicker';
 
 /* ── Shared styles (CreateTaskModal pattern) ─────────────────────── */
 const baseCls =
@@ -40,6 +41,16 @@ const LINK_TYPES: Array<{ value: Exclude<LinkType, ''>; label: string; icon: Rea
   { value: 'proyecto',label: 'Proyecto', icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg> },
 ];
 
+function dedupeByKey<T>(items: T[], getKey: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export default function NuevaWikiPage() {
   const router = useRouter();
 
@@ -60,9 +71,13 @@ export default function NuevaWikiPage() {
   const [epicsLoading, setEpicsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [icon, setIcon] = useState<string>('');
 
   const allProjects = useMemo(
-    () => workspaces.flatMap(ws => ws.projects.map(p => ({ ...p, workspaceId: ws.id }))),
+    () => dedupeByKey(
+      workspaces.flatMap(ws => ws.projects.map(p => ({ ...p, workspaceId: ws.id }))),
+      (project) => project.code,
+    ),
     [workspaces],
   );
 
@@ -85,23 +100,28 @@ export default function NuevaWikiPage() {
   }, [workspaceId]);
 
   useEffect(() => {
-    if (allProjects.length === 0) return;
+    if (allProjects.length === 0) {
+      setAllTasks([]);
+      return;
+    }
     setTasksLoading(true);
     Promise.all(
       allProjects.map(p =>
         apiGet<ApiWrapped<TaskItem[]>>(`/tasks?projectCode=${p.code}`)
           .then(r => r.ok ? r.data.map((t): TaskWithProject => ({ ...t, projectCode: p.code, projectName: p.name })) : [])
           .catch(() => []),
-
       ),
     ).then(results => {
-      setAllTasks(results.flat());
+      setAllTasks(dedupeByKey(results.flat(), (task) => task.id));
       setTasksLoading(false);
     });
   }, [allProjects]);
 
   useEffect(() => {
-    if (allProjects.length === 0) return;
+    if (allProjects.length === 0) {
+      setAllEpics([]);
+      return;
+    }
     setEpicsLoading(true);
     Promise.all(
       allProjects.map(p =>
@@ -110,7 +130,7 @@ export default function NuevaWikiPage() {
           .catch(() => []),
       ),
     ).then(results => {
-      setAllEpics(results.flat());
+      setAllEpics(dedupeByKey(results.flat(), (epic) => epic.id));
       setEpicsLoading(false);
     });
   }, [allProjects]);
@@ -127,6 +147,7 @@ export default function NuevaWikiPage() {
         workspaceId,
         title: title.trim(),
         content,
+        icon: icon || undefined,
         parentPageId: parentPageId || undefined,
         projectCode: projectCode || undefined,
         taskId: taskId || undefined,
@@ -192,6 +213,10 @@ export default function NuevaWikiPage() {
               autoFocus
               className={baseCls}
             />
+          </Field>
+
+          <Field label="Icono">
+            <EmojiPicker value={icon} onChange={setIcon} />
           </Field>
 
           <Field label="Proceso padre">
@@ -302,6 +327,7 @@ export default function NuevaWikiPage() {
             onChange={setContent}
             placeholder="Describe el proceso aquí..."
             title={title || undefined}
+            icon={icon || undefined}
           />
         </div>
 

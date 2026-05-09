@@ -41,6 +41,23 @@ interface SidebarProps {
   bottomItems?: NavItem[];
 }
 
+function dedupeByKey<T>(items: T[], getKey: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeWorkspaces(items: WorkspaceSummary[]): WorkspaceSummary[] {
+  return dedupeByKey(items, (workspace) => workspace.id).map((workspace) => ({
+    ...workspace,
+    projects: dedupeByKey(workspace.projects ?? [], (project) => project.id),
+  }));
+}
+
 /* ── Default nav structure (matches Figma) ──────────── */
 
 /* ── Workspace icon renderer (Feather icon set) ─────── */
@@ -311,7 +328,7 @@ export default function Sidebar({
 
   useEffect(() => {
     apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
-      .then((res) => setWorkspaces(res.data))
+      .then((res) => setWorkspaces(normalizeWorkspaces(res.data)))
       .catch(() => {/* silencioso en error de red */});
   }, [projectsVersion]);
 

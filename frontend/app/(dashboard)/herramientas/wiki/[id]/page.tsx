@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiDelete, apiGet, apiPatch } from '@/lib/api';
 import type { ApiWrapped, WikiPageDetail, WorkspaceSummary } from '@/types/api.types';
 import WikiRelationBadges from '@/components/features/wiki/WikiRelationBadges';
+import { renderWikiIcon } from '@/components/features/wiki/wikiIcons';
 import dynamic from 'next/dynamic';
 
 const WikiViewer = dynamic(() => import('@/components/features/wiki/WikiViewer'), { ssr: false });
@@ -19,6 +20,8 @@ export default function WikiDetailPage() {
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const mobileActionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -41,6 +44,17 @@ export default function WikiDetailPage() {
       .catch(() => router.replace('/herramientas/wiki'))
       .finally(() => setLoading(false));
   }, [id, router]);
+
+  useEffect(() => {
+    if (!mobileActionsOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mobileActionsRef.current && !mobileActionsRef.current.contains(event.target as Node)) {
+        setMobileActionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [mobileActionsOpen]);
 
   const handleArchive = async () => {
     if (!page) return;
@@ -112,7 +126,7 @@ export default function WikiDetailPage() {
   /* ── Loading skeleton ───────────────────────────────────────────────────── */
   if (loading) {
     return (
-      <div className="h-full overflow-y-auto px-6 py-6 space-y-5">
+      <div className="h-full overflow-y-auto px-4 py-5 space-y-5 md:px-6 md:py-6">
         <div className="h-4 w-24 bg-[var(--c-hover)] rounded animate-pulse" />
         <div className="h-9 w-80 bg-[var(--c-hover)] rounded animate-pulse" />
         <div className="h-4 w-44 bg-[var(--c-hover)] rounded animate-pulse" />
@@ -128,25 +142,115 @@ export default function WikiDetailPage() {
   if (!page) return null;
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-6">
+    <div className="h-full overflow-y-auto px-4 py-5 md:px-6 md:py-6">
 
       {/* ── Back button ───────────────────────────────────────────────────── */}
-      <Link
-        href="/herramientas/wiki"
-        className="inline-flex items-center gap-1.5 text-sm text-[var(--c-text-sub)] hover:text-[var(--c-text)] transition-colors mb-6 group"
-      >
-        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
-          className="transition-transform group-hover:-translate-x-0.5">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-        Volver a Wiki
-      </Link>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <Link
+          href="/herramientas/wiki"
+          className="inline-flex min-w-0 items-center gap-1.5 text-sm text-[var(--c-text-sub)] hover:text-[var(--c-text)] transition-colors group"
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
+            className="shrink-0 transition-transform group-hover:-translate-x-0.5">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          <span className="truncate">Volver a Wiki</span>
+        </Link>
+
+        <div ref={mobileActionsRef} className="relative md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileActionsOpen((open) => !open)}
+            aria-label="Abrir acciones"
+            aria-expanded={mobileActionsOpen}
+            className={[
+              'flex h-10 w-10 items-center justify-center rounded-xl border transition-colors',
+              mobileActionsOpen
+                ? 'border-[var(--c-text)] bg-[var(--c-text)] text-[var(--c-bg)] shadow-[0_8px_22px_rgba(0,0,0,0.12)]'
+                : 'border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)]',
+            ].join(' ')}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+
+          {mobileActionsOpen && (
+            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-52 overflow-hidden rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] shadow-[0_18px_38px_rgba(0,0,0,0.14)]">
+              <Link
+                href={`/herramientas/wiki/${page.id}/editar`}
+                onClick={() => setMobileActionsOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-hover)]"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                Editar página
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionsOpen(false);
+                  handlePrint();
+                }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-hover)]"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                  <polyline points="6 9 6 2 18 2 18 9" />
+                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                  <rect x="6" y="14" width="12" height="8" />
+                </svg>
+                Exportar PDF
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionsOpen(false);
+                  void handleArchive();
+                }}
+                disabled={archiving}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-hover)] disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                  <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
+                  <line x1="10" y1="12" x2="14" y2="12" />
+                </svg>
+                {archiving ? 'Procesando...' : page.is_archived ? 'Restaurar' : 'Archivar'}
+              </button>
+
+              <div className="h-px bg-[var(--c-border)]" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionsOpen(false);
+                  setConfirmDelete(true);
+                }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--c-danger)] transition-colors hover:bg-red-50"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" /><path d="M14 11v6" />
+                  <path d="M9 6V4h6v2" />
+                </svg>
+                Eliminar página
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ── Two-column layout ─────────────────────────────────────────────── */}
-      <div className="flex gap-8 items-start">
+      <div className="flex flex-col gap-5 md:flex-row md:gap-8 md:items-start">
 
         {/* ── Main content ─────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0" id="wiki-print-area">
+        <div className="order-2 flex-1 min-w-0 md:order-1" id="wiki-print-area">
 
           {/* Archived banner */}
           {page.is_archived && (
@@ -159,9 +263,16 @@ export default function WikiDetailPage() {
           )}
 
           {/* Title */}
-          <h1 className="text-3xl font-bold text-[var(--c-text)] leading-tight mb-3 break-words">
-            {page.title}
-          </h1>
+          <div className="flex items-start gap-3 mb-3">
+            {page.icon && (
+              <span className="mt-0.5 shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--c-hover)] text-[var(--c-text-sub)]">
+                {renderWikiIcon(page.icon, 22)}
+              </span>
+            )}
+            <h1 className="text-[2rem] font-bold text-[var(--c-text)] leading-[1.06] break-words md:text-3xl">
+              {page.title}
+            </h1>
+          </div>
 
           {/* Relation badges */}
           <WikiRelationBadges page={page} labels={{ workspace: workspaceName || undefined }} />
@@ -211,12 +322,12 @@ export default function WikiDetailPage() {
         </div>
 
         {/* ── Sidebar ──────────────────────────────────────────────────── */}
-        <aside className="w-52 shrink-0 sticky top-6 space-y-3">
+        <aside className="order-1 hidden w-full shrink-0 space-y-3 md:order-2 md:block md:w-52 md:sticky md:top-6">
 
           {/* Primary action */}
           <Link
             href={`/herramientas/wiki/${page.id}/editar`}
-            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-medium bg-[var(--c-text)] text-[var(--c-bg)] rounded-xl hover:opacity-80 transition-opacity"
+            className="flex items-center justify-center gap-2 w-full px-4 py-3 text-sm font-medium bg-[var(--c-text)] text-[var(--c-bg)] rounded-xl hover:opacity-80 transition-opacity"
           >
             <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -229,7 +340,7 @@ export default function WikiDetailPage() {
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-medium border border-[var(--c-border)] text-[var(--c-text-sub)] rounded-xl hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors"
+            className="flex items-center justify-center gap-2 w-full px-4 py-3 text-sm font-medium border border-[var(--c-border)] text-[var(--c-text-sub)] rounded-xl hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors"
           >
             <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
               <polyline points="6 9 6 2 18 2 18 9" />
@@ -240,12 +351,12 @@ export default function WikiDetailPage() {
           </button>
 
           {/* Secondary actions */}
-          <div className="flex flex-col rounded-xl border border-[var(--c-border)] overflow-hidden">
+          <div className="flex flex-col rounded-xl border border-[var(--c-border)] overflow-hidden bg-[var(--c-bg)]">
             <button
               type="button"
               onClick={handleArchive}
               disabled={archiving}
-              className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors disabled:opacity-50 text-left"
+              className="flex items-center gap-2.5 px-3.5 py-3 text-sm text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors disabled:opacity-50 text-left"
             >
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
                 <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
@@ -257,7 +368,7 @@ export default function WikiDetailPage() {
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-[var(--c-danger)] hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors text-left"
+              className="flex items-center gap-2.5 px-3.5 py-3 text-sm text-[var(--c-danger)] hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors text-left"
             >
               <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
                 <polyline points="3 6 5 6 21 6" />

@@ -11,6 +11,7 @@
   "dependencies": {
     "@sentry/nextjs": "^10.52.0",
     "@tiptap/extension-code-block-lowlight": "^2.27.2",
+    "@tiptap/extension-color": "^2.27.2",
     "@tiptap/extension-image": "^2",
     "@tiptap/extension-link": "^2",
     "@tiptap/extension-placeholder": "^2",

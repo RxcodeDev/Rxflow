@@ -6,12 +6,17 @@ import StarterKit from '@tiptap/starter-kit';
 import Dropcursor from '@tiptap/extension-dropcursor';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import TextStyle from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
 import { ResizableImage } from './ResizableImage';
 import { TiptapViewer } from './WikiViewer';
 import SlashMenuFloating, { SLASH_COMMANDS, type SlashCommand } from './SlashMenu';
+import { renderWikiIcon } from './wikiIcons';
 import { liftEmptyBlock } from 'prosemirror-commands';
+import { apiGet } from '@/lib/api';
+import type { ApiWrapped, MemberItem } from '@/types/api.types';
 
 const lowlight = createLowlight(common);
 
@@ -51,8 +56,10 @@ const ExitBlockOnEnter = Extension.create({
 interface WikiEditorProps {
   content?: Record<string, unknown>;
   onChange: (json: Record<string, unknown>) => void;
+  onTitleChange?: (title: string) => void;
   placeholder?: string;
   title?: string;
+  icon?: string;
 }
 
 // ── Toolbar button ────────────────────────────────────────────────────────────
@@ -85,6 +92,72 @@ function ToolbarBtn({
   );
 }
 
+// ── Mention dropdown ─────────────────────────────────────────────────────────
+
+interface MentionMenuProps {
+  x: number;
+  y: number;
+  items: UserMention[];
+  activeIndex: number;
+  onSelect: (user: UserMention) => void;
+  onClose: () => void;
+}
+
+function MentionMenuFloating({ x, y, items, activeIndex, onSelect, onClose }: MentionMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = menuRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIndex}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const menuH = items.length * 44 + 8;
+  const finalY = y + menuH > window.innerHeight ? y - menuH - 24 : y;
+  const finalX = Math.min(x, window.innerWidth - 232);
+
+  return (
+    <div
+      ref={menuRef}
+      style={{ position: 'fixed', left: finalX, top: finalY, zIndex: 9999 }}
+      className="w-56 rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] shadow-[0_8px_30px_rgba(0,0,0,0.13)] py-1 overflow-hidden"
+    >
+      {items.map((user, i) => (
+        <button
+          key={user.id}
+          type="button"
+          data-idx={i}
+          onMouseDown={e => { e.preventDefault(); onSelect(user); }}
+          className={[
+            'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
+            i === activeIndex ? 'bg-[var(--c-hover)]' : 'hover:bg-[var(--c-hover)]',
+          ].join(' ')}
+        >
+          {user.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full object-cover flex-none" />
+          ) : (
+            <span
+              className="w-6 h-6 rounded-full flex-none flex items-center justify-center text-[10px] font-semibold text-white"
+              style={{ background: user.avatarColor ?? 'var(--c-muted)' }}
+            >
+              {user.initials}
+            </span>
+          )}
+          <span className="text-[12.5px] text-[var(--c-text)] font-medium truncate">{user.name}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Image helper ─────────────────────────────────────────────────────────────
 
 function fileToBase64(file: File): Promise<string> {
@@ -100,20 +173,60 @@ function fileToBase64(file: File): Promise<string> {
 
 type SlashState = { x: number; y: number; activeIndex: number; items: SlashCommand[] } | null;
 
-export default function WikiEditor({ content, onChange, placeholder, title }: WikiEditorProps) {
+interface UserMention {
+  id: string;
+  name: string;
+  initials: string;
+  avatarColor: string | null;
+  avatarUrl: string | null;
+}
+
+type MentionState = { x: number; y: number; query: string; activeIndex: number; items: UserMention[] } | null;
+
+export default function WikiEditor({ content, onChange, onTitleChange, placeholder, title, icon }: WikiEditorProps) {
   const [previewMode, setPreviewMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [slashMenu, setSlashMenu] = useState<SlashState>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [localTitle, setLocalTitle] = useState(title ?? '');
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [mentionMenu, setMentionMenuInternal] = useState<MentionState>(null);
+  const [mentionUsers, setMentionUsers] = useState<UserMention[]>([]);
   const dragCounter = useRef(0);
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
   const slashStateRef = useRef<SlashState>(null);
+  const mentionStateRef = useRef<MentionState>(null);
 
 
   const setSlash = useCallback((menu: SlashState) => {
     slashStateRef.current = menu;
     setSlashMenu(menu);
   }, []);
+
+  const setMention = useCallback((menu: MentionState) => {
+    mentionStateRef.current = menu;
+    setMentionMenuInternal(menu);
+  }, []);
+
+  const insertMention = useCallback((user: UserMention) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const { $from } = ed.state.selection;
+    const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+    const match = textBefore.match(/@([^\s]*)$/);
+    if (match) {
+      ed.chain().focus().deleteRange({ from: $from.pos - match[0].length, to: $from.pos }).run();
+    }
+    ed.chain().focus().insertContent([
+      {
+        type: 'text',
+        marks: [{ type: 'textStyle', attrs: { color: '#22c55e' } }],
+        text: `@${user.name}`,
+      },
+      { type: 'text', text: ' ' },
+    ]).run();
+    setMention(null);
+  }, [setMention]);
 
   const insertImages = useCallback(async (files: FileList | File[]) => {
     const images = Array.from(files).filter(f => f.type.startsWith('image/'));
@@ -161,11 +274,34 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer' } }),
       Placeholder.configure({ placeholder: placeholder ?? 'Empieza a escribir...' }),
       ResizableImage.configure({ allowBase64: true }),
+      TextStyle,
+      Color,
     ],
     content: content ?? { type: 'doc', content: [] },
     editorProps: {
       attributes: { class: 'wiki-prose' },
       handleKeyDown(view, event) {
+        // @mention menu takes priority over slash
+        const mMenu = mentionStateRef.current;
+        if (mMenu && mMenu.items.length > 0) {
+          if (event.key === 'ArrowDown') {
+            setMention({ ...mMenu, activeIndex: (mMenu.activeIndex + 1) % mMenu.items.length });
+            return true;
+          }
+          if (event.key === 'ArrowUp') {
+            setMention({ ...mMenu, activeIndex: (mMenu.activeIndex - 1 + mMenu.items.length) % mMenu.items.length });
+            return true;
+          }
+          if (event.key === 'Enter') {
+            const user = mMenu.items[mMenu.activeIndex];
+            if (user) insertMention(user);
+            return true;
+          }
+          if (event.key === 'Escape') {
+            setMention(null);
+            return true;
+          }
+        }
         const menu = slashStateRef.current;
         if (!menu) return false;
         if (event.key === 'ArrowDown') {
@@ -216,6 +352,12 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
     if (cur !== nxt) editor.commands.setContent(content, false);
   }, [editor, content]);
 
+  // Sync localTitle from prop (sidebar input → editor title)
+  useEffect(() => {
+    if (title !== undefined && title !== localTitle) setLocalTitle(title);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title]);
+
   // Slash command detection
   useEffect(() => {
     if (!editor) return;
@@ -245,6 +387,44 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
       editor.off('selectionUpdate', detectSlash);
     };
   }, [editor, setSlash]);
+
+  // @mention detection
+  useEffect(() => {
+    if (!editor) return;
+    const detectMention = () => {
+      const { state } = editor;
+      const { $from } = state.selection;
+      const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+      const match = textBefore.match(/@([^\s]*)$/);
+      if (!match) {
+        if (mentionStateRef.current !== null) setMention(null);
+        return;
+      }
+      const query = match[1].toLowerCase();
+      const items = mentionUsers
+        .filter(u => query === '' || u.name.toLowerCase().includes(query))
+        .slice(0, 7);
+      const safePos = Math.min(state.selection.from, state.doc.content.size - 1);
+      const coords = editor.view.coordsAtPos(safePos);
+      setMention({ x: coords.left, y: coords.bottom + 6, query: match[1], activeIndex: 0, items });
+    };
+    editor.on('update', detectMention);
+    editor.on('selectionUpdate', detectMention);
+    return () => {
+      editor.off('update', detectMention);
+      editor.off('selectionUpdate', detectMention);
+    };
+  }, [editor, mentionUsers, setMention]);
+
+  // Fetch users for @mention
+  useEffect(() => {
+    apiGet<ApiWrapped<MemberItem[]>>('/users')
+      .then(r => setMentionUsers(r.data.map(u => ({
+        id: u.id, name: u.name, initials: u.initials,
+        avatarColor: u.avatar_color, avatarUrl: u.avatar_url,
+      }))))
+      .catch(() => {});
+  }, []);
 
   // Clear lightbox when leaving preview mode
   useEffect(() => {
@@ -277,7 +457,7 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
 
   return (
     <div
-      className="h-full flex flex-col border border-[var(--c-border)] rounded-lg overflow-hidden relative"
+      className="relative flex h-full min-h-[26rem] flex-col overflow-hidden rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] md:rounded-lg"
       onDragEnter={e => {
         e.preventDefault();
         if (Array.from(e.dataTransfer?.items ?? []).some(i => i.type.startsWith('image/'))) {
@@ -338,21 +518,24 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
       )}
 
       {/* ── Top bar: tabs + toolbar ───────────────────────────────────── */}
-      <div className="flex flex-wrap items-stretch border-b border-[var(--c-border)] bg-[var(--c-hover)] shrink-0">
+      <div className="shrink-0 border-b border-[var(--c-border)] bg-[var(--c-hover)]">
 
         {/* Tabs */}
-        <div className="flex items-center border-r border-[var(--c-border)] shrink-0">
-          <button type="button" onClick={() => setPreviewMode(false)} className={tabCls(!previewMode)}>
-            Editar
-          </button>
-          <button type="button" onClick={() => setPreviewMode(true)} className={tabCls(previewMode)}>
-            Vista previa
-          </button>
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--c-border)] px-2 md:block md:border-b-0 md:border-r md:px-0">
+          <div className="flex items-center overflow-x-auto md:overflow-visible">
+            <button type="button" onClick={() => setPreviewMode(false)} className={tabCls(!previewMode)}>
+              Editar
+            </button>
+            <button type="button" onClick={() => setPreviewMode(true)} className={tabCls(previewMode)}>
+              Vista previa
+            </button>
+          </div>
         </div>
 
         {/* Toolbar — only in edit mode */}
         {!previewMode && (
-          <div className="flex flex-wrap items-center gap-0.5 px-2 py-1">
+          <div className="overflow-x-auto px-2 py-1.5">
+            <div className="flex min-w-max items-center gap-0.5">
             <ToolbarBtn
               onClick={() => editor.chain().focus().toggleBold().run()}
               active={editor.isActive('bold')}
@@ -455,6 +638,75 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
 
             <span className="w-px bg-[var(--c-border)] mx-1 self-stretch" />
 
+            {/* ── Color picker ─────────────────────────────────────── */}
+            <div className="relative">
+              <button
+                type="button"
+                title="Color de texto"
+                onClick={() => setColorPickerOpen(o => !o)}
+                className={[
+                  'p-1.5 rounded text-sm leading-none transition-colors flex flex-col items-center gap-0.5',
+                  colorPickerOpen
+                    ? 'bg-[var(--c-active-pill)] text-[var(--c-text)]'
+                    : 'text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)]',
+                ].join(' ')}
+              >
+                <span className="font-bold text-xs leading-none" style={{ color: editor.getAttributes('textStyle').color ?? 'var(--c-text)' }}>A</span>
+                <span
+                  className="block h-[3px] w-[13px] rounded-full"
+                  style={{ background: editor.getAttributes('textStyle').color ?? 'var(--c-text)' }}
+                />
+              </button>
+
+              {colorPickerOpen && (
+                <>
+                  {/* Overlay to close */}
+                  <div className="fixed inset-0 z-40" onClick={() => setColorPickerOpen(false)} />
+                  <div
+                    className="absolute top-full left-0 mt-1 z-50 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl shadow-lg p-3"
+                    style={{ minWidth: 168 }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <p className="text-[10px] font-semibold text-[var(--c-text-sub)] uppercase tracking-wide mb-2">Color de texto</p>
+                    <div className="grid grid-cols-7 gap-1.5 mb-2">
+                      {[
+                        '#111111','#4B5563','#9CA3AF',
+                        '#EF4444','#F97316','#EAB308','#22C55E',
+                        '#3B82F6','#8B5CF6','#EC4899','#14B8A6',
+                        '#B91C1C','#C2410C','#A16207','#15803D',
+                        '#1D4ED8','#6D28D9','#BE185D','#0F766E',
+                        '#fff',
+                      ].map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          title={color}
+                          onClick={() => { editor.chain().focus().setColor(color).run(); setColorPickerOpen(false); }}
+                          className="w-5 h-5 rounded-full border transition-transform hover:scale-110 focus:outline-none"
+                          style={{
+                            background: color,
+                            borderColor: editor.getAttributes('textStyle').color === color ? '#6366f1' : color === '#fff' ? 'var(--c-border)' : color,
+                            boxShadow: editor.getAttributes('textStyle').color === color ? '0 0 0 2px #6366f180' : undefined,
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {editor.getAttributes('textStyle').color && (
+                      <button
+                        type="button"
+                        onClick={() => { editor.chain().focus().unsetColor().run(); setColorPickerOpen(false); }}
+                        className="w-full text-[11px] text-[var(--c-text-sub)] hover:text-[var(--c-danger)] transition-colors text-left py-0.5"
+                      >
+                        × Quitar color
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <span className="w-px bg-[var(--c-border)] mx-1 self-stretch" />
+
             <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Deshacer">
               <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
                 <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-4.95" />
@@ -465,20 +717,40 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
                 <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-.49-4.95" />
               </svg>
             </ToolbarBtn>
+            </div>
           </div>
         )}
       </div>
 
       {/* ── Editor pane (always in DOM, hidden when preview) ──────────── */}
-      <div className={`flex-1 min-h-0 overflow-auto px-4 py-3${previewMode ? ' hidden' : ''}`}>
+      <div className={`flex-1 min-h-0 overflow-auto px-4 py-4 md:px-4 md:py-3${previewMode ? ' hidden' : ''}`}>
+        {/* Editable title */}
+        {onTitleChange !== undefined && (
+          <input
+            type="text"
+            value={localTitle}
+            onChange={e => { setLocalTitle(e.target.value); onTitleChange(e.target.value); }}
+            placeholder="Título del documento"
+            className="mb-3 w-full border-none bg-transparent text-[1.9rem] font-bold leading-[1.05] text-[var(--c-text)] outline-none placeholder:text-[var(--c-muted)] md:text-2xl"
+          />
+        )}
         <EditorContent editor={editor} />
       </div>
 
       {/* ── Preview pane ─────────────────────────────────────────────── */}
       {previewMode && (
-        <div className="flex-1 min-h-0 overflow-auto px-5 py-5">
+        <div className="flex-1 min-h-0 overflow-auto px-4 py-5 md:px-5">
           {title
-            ? <h1 className="text-2xl font-bold text-[var(--c-text)] mb-5 leading-tight">{title}</h1>
+            ? (
+              <div className="flex items-center gap-2.5 mb-5">
+                {icon && renderWikiIcon(icon) && (
+                  <span className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-[var(--c-hover)] text-[var(--c-text-sub)]">
+                    {renderWikiIcon(icon, 20)}
+                  </span>
+                )}
+                <h1 className="text-2xl font-bold text-[var(--c-text)] leading-tight">{title}</h1>
+              </div>
+            )
             : <p className="text-xs text-[var(--c-muted)] italic mb-5">— Sin título —</p>
           }
           {editor.isEmpty
@@ -502,6 +774,18 @@ export default function WikiEditor({ content, onChange, placeholder, title }: Wi
           activeIndex={slashMenu.activeIndex}
           onSelect={executeSlash}
           onClose={() => setSlash(null)}
+        />
+      )}
+
+      {/* ── @mention dropdown ────────────────────────────────────────── */}
+      {mentionMenu && mentionMenu.items.length > 0 && (
+        <MentionMenuFloating
+          x={mentionMenu.x}
+          y={mentionMenu.y}
+          items={mentionMenu.items}
+          activeIndex={mentionMenu.activeIndex}
+          onSelect={insertMention}
+          onClose={() => setMention(null)}
         />
       )}
 

@@ -7,6 +7,7 @@ import type { ApiWrapped, EpicItem, WikiPageDetail, WikiPageSummary, WorkspaceSu
 import WikiEditor from '@/components/features/wiki/WikiEditor';
 import TaskSearchSelect, { type TaskWithProject } from '@/components/features/wiki/TaskSearchSelect';
 import SearchSelect from '@/components/ui/SearchSelect';
+import EmojiPicker from '@/components/features/wiki/EmojiPicker';
 
 /* ── Shared styles (CreateTaskModal pattern) ─────────────────────── */
 const baseCls =
@@ -18,9 +19,9 @@ const baseCls =
 
 const labelCls = 'text-[0.7rem] font-semibold text-[var(--c-text-sub)] tracking-[0.04em] uppercase';
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+function Field({ label, required, children, className = '' }: { label: string; required?: boolean; children: ReactNode; className?: string }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={`flex flex-col gap-1.5 ${className}`.trim()}>
       <span className={labelCls}>
         {label}{required && <span className="text-[var(--c-danger)] ml-0.5">*</span>}
       </span>
@@ -38,6 +39,16 @@ const LINK_TYPES: Array<{ value: Exclude<LinkType, ''>; label: string; icon: Rea
   { value: 'epica',   label: 'Épica',    icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg> },
   { value: 'proyecto',label: 'Proyecto', icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg> },
 ];
+
+function dedupeByKey<T>(items: T[], getKey: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export default function EditarWikiPage() {
   const { id } = useParams<{ id: string }>();
@@ -62,9 +73,14 @@ export default function EditarWikiPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [icon, setIcon] = useState<string>('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const allProjects = useMemo(
-    () => workspaces.flatMap(ws => ws.projects.map(p => ({ ...p, workspaceId: ws.id }))),
+    () => dedupeByKey(
+      workspaces.flatMap(ws => ws.projects.map(p => ({ ...p, workspaceId: ws.id }))),
+      (project) => project.code,
+    ),
     [workspaces],
   );
 
@@ -88,6 +104,7 @@ export default function EditarWikiPage() {
         const initLink: LinkType = p.task_id ? 'tarea' : p.epic_id ? 'epica' : p.project_code ? 'proyecto' : '';
         setLinkType(initLink);
         if (initLink) setRelationsOpen(true);
+        setIcon(p.icon ?? '');
         if (wsRes.ok) setWorkspaces(wsRes.data);
       })
       .catch(() => router.replace('/herramientas/wiki'))
@@ -102,23 +119,28 @@ export default function EditarWikiPage() {
   }, [workspaceId, id]);
 
   useEffect(() => {
-    if (allProjects.length === 0) return;
+    if (allProjects.length === 0) {
+      setAllTasks([]);
+      return;
+    }
     setTasksLoading(true);
     Promise.all(
       allProjects.map(p =>
         apiGet<ApiWrapped<TaskItem[]>>(`/tasks?projectCode=${p.code}`)
           .then(r => r.ok ? r.data.map((t): TaskWithProject => ({ ...t, projectCode: p.code, projectName: p.name })) : [])
           .catch(() => []),
-
       ),
     ).then(results => {
-      setAllTasks(results.flat());
+      setAllTasks(dedupeByKey(results.flat(), (task) => task.id));
       setTasksLoading(false);
     });
   }, [allProjects]);
 
   useEffect(() => {
-    if (allProjects.length === 0) return;
+    if (allProjects.length === 0) {
+      setAllEpics([]);
+      return;
+    }
     setEpicsLoading(true);
     Promise.all(
       allProjects.map(p =>
@@ -127,7 +149,7 @@ export default function EditarWikiPage() {
           .catch(() => []),
       ),
     ).then(results => {
-      setAllEpics(results.flat());
+      setAllEpics(dedupeByKey(results.flat(), (epic) => epic.id));
       setEpicsLoading(false);
     });
   }, [allProjects]);
@@ -141,6 +163,7 @@ export default function EditarWikiPage() {
       await apiPatch(`/wiki/${id}`, {
         title: title.trim(),
         content,
+        icon: icon || null,
         parentPageId: parentPageId || null,
         projectCode: projectCode || null,
         taskId: taskId || null,
@@ -168,9 +191,9 @@ export default function EditarWikiPage() {
   if (!originalPage) return null;
 
   return (
-    <form onSubmit={handleSubmit} className="h-full flex flex-col overflow-hidden">
+    <form onSubmit={handleSubmit} className="h-full flex flex-col overflow-hidden bg-[var(--c-bg)]">
       {/* ── Header bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--c-border)] shrink-0 bg-[var(--c-bg)]">
+      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-bg)] px-4 py-3 shrink-0">
         <button
           type="button"
           onClick={() => router.back()}
@@ -181,155 +204,204 @@ export default function EditarWikiPage() {
             <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
           </svg>
         </button>
-        <span className="font-semibold text-[var(--c-text)] flex-1 truncate">Editar proceso</span>
-        {error && <p className="text-xs text-[var(--c-danger)] truncate max-w-xs">{error}</p>}
+        <div className="min-w-0 flex-1">
+          <span className="block truncate font-semibold text-[var(--c-text)]">Editar proceso</span>
+          {error && <p className="mt-0.5 truncate text-xs text-[var(--c-danger)] md:hidden">{error}</p>}
+        </div>
+        {error && <p className="hidden max-w-xs truncate text-xs text-[var(--c-danger)] md:block">{error}</p>}
         <button
           type="submit"
           disabled={saving || !title.trim()}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[var(--c-text)] text-[var(--c-bg)] text-sm font-medium rounded-lg hover:opacity-80 disabled:opacity-40 transition-opacity shrink-0"
+          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-[var(--c-text)] px-3 py-2.5 text-sm font-medium text-[var(--c-bg)] transition-opacity hover:opacity-80 disabled:opacity-40 md:px-4 md:py-2"
         >
           {saving ? 'Guardando...' : 'Guardar cambios'}
         </button>
       </div>
 
       {/* ── Body ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+
+        {/* Right: rich text editor with toolbar */}
+        <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 md:order-2 md:p-3">
+          <WikiEditor
+            content={content}
+            onChange={setContent}
+            onTitleChange={setTitle}
+            placeholder="Describe el proceso aquí..."
+            title={title || undefined}
+            icon={icon || undefined}
+          />
+        </div>
 
         {/* Left meta panel */}
-        <aside className="w-60 md:w-64 shrink-0 border-r border-[var(--c-border)] overflow-y-auto p-4 space-y-4 bg-[var(--c-bg)]">
+        <aside className="order-2 w-full shrink-0 overflow-y-auto border-t border-[var(--c-border)] bg-[var(--c-bg)] p-3 md:order-1 md:w-64 md:border-t-0 md:border-r md:p-4 md:space-y-4">
 
-          <Field label="Workspace">
-            <SearchSelect
-              options={workspaces.map(ws => ({ value: ws.id, label: ws.name }))}
-              value={workspaceId}
-              onChange={v => setWorkspaceId(v)}
-              placeholder="Selecciona workspace..."
-              noneLabel="— ninguno —"
-              searchPlaceholder="Buscar workspace..."
-            />
-          </Field>
-
-          <Field label="Título" required>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Nombre del proceso"
-              required
-              className={baseCls}
-            />
-          </Field>
-
-          <Field label="Proceso padre">
-            <SearchSelect
-              options={parentPages.map(p => ({ value: p.id, label: p.title }))}
-              value={parentPageId}
-              onChange={v => setParentPageId(v)}
-              placeholder="— ninguno (raíz) —"
-              noneLabel="— ninguno (raíz) —"
-              searchPlaceholder="Buscar proceso padre..."
-              disabled={parentPages.length === 0}
-            />
-          </Field>
-
-          <hr className="border-[var(--c-border)]" />
-
-          {/* Relations — collapsible */}
-          <div>
+          <div className="md:hidden">
             <button
               type="button"
-              onClick={() => setRelationsOpen(o => !o)}
-              className="flex items-center justify-between w-full"
+              onClick={() => setSettingsOpen((open) => !open)}
+              className="flex w-full items-center justify-between rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] px-4 py-3 text-left shadow-[0_6px_20px_rgba(0,0,0,0.04)] transition-colors hover:bg-[var(--c-hover)]"
             >
-              <span className={labelCls}>Vincular a</span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-sub)]">Configuración</p>
+                <p className="mt-1 truncate text-xs text-[var(--c-muted)]">
+                  {workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? 'Sin workspace'}
+                  {parentPageId ? ' · Con proceso padre' : ' · Proceso raíz'}
+                </p>
+              </div>
               <svg
-                viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
-                className={`transition-transform text-[var(--c-text-sub)] ${relationsOpen ? 'rotate-180' : ''}`}
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                stroke="currentColor"
+                fill="none"
+                strokeWidth="2"
+                aria-hidden="true"
+                className={`shrink-0 text-[var(--c-text-sub)] transition-transform ${settingsOpen ? 'rotate-180' : ''}`}
               >
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
+          </div>
 
-            {relationsOpen && (
-              <div className="mt-3 space-y-3">
-                {/* Type picker pills */}
-                <div className="flex flex-wrap gap-1.5">
-                  {LINK_TYPES.map(lt => (
-                    <button
-                      key={lt.value}
-                      type="button"
-                      onClick={() => {
-                        const next: LinkType = linkType === lt.value ? '' : lt.value;
-                        setLinkType(next);
-                        if (next !== 'tarea') setTaskId('');
-                        if (next !== 'epica') setEpicId('');
-                        if (next !== 'proyecto') setProjectCode('');
-                      }}
-                      className={[
-                        'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border',
-                        linkType === lt.value
-                          ? 'bg-[var(--c-text)] text-[var(--c-bg)] border-[var(--c-text)]'
-                          : 'text-[var(--c-text-sub)] border-[var(--c-border)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]',
-                      ].join(' ')}
-                    >
-                      {lt.icon}
-                      {lt.label}
-                    </button>
-                  ))}
-                </div>
+          <div className={`${settingsOpen ? 'mt-3 block' : 'hidden'} md:mt-0 md:block`}>
+            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-4 shadow-[0_8px_24px_rgba(0,0,0,0.04)] md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+              <div className="mb-4 md:hidden">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--c-text-sub)]">Configuración</p>
+                <p className="mt-1 text-xs text-[var(--c-muted)]">Ajusta contexto y relaciones antes de editar el contenido.</p>
+              </div>
 
-                {linkType === 'tarea' && (
-                  <Field label="Tarea">
-                    <TaskSearchSelect
-                      tasks={allTasks}
-                      value={taskId}
-                      onChange={(tId, task) => {
-                        setTaskId(tId);
-                        if (task) setProjectCode(task.projectCode);
-                      }}
-                      loading={tasksLoading}
-                    />
-                  </Field>
-                )}
+              <div className="space-y-4">
 
-                {linkType === 'epica' && (
-                  <Field label="Épica">
-                    <SearchSelect
-                      options={allEpics.map(e => ({ value: e.id, label: e.name, subLabel: e.projectName, colorKey: e.projectCode }))}
-                      value={epicId}
-                      onChange={v => setEpicId(v)}
-                      loading={epicsLoading}
-                      noneLabel="— ninguna —"
-                      searchPlaceholder="Buscar épica..."
-                    />
-                  </Field>
-                )}
+              <Field label="Workspace">
+                <SearchSelect
+                  options={workspaces.map(ws => ({ value: ws.id, label: ws.name }))}
+                  value={workspaceId}
+                  onChange={v => setWorkspaceId(v)}
+                  placeholder="Selecciona workspace..."
+                  noneLabel="— ninguno —"
+                  searchPlaceholder="Buscar workspace..."
+                />
+              </Field>
 
-                {linkType === 'proyecto' && (
-                  <Field label="Proyecto">
-                    <SearchSelect
-                      options={allProjects.map(p => ({ value: p.code, label: p.name }))}
-                      value={projectCode}
-                      onChange={v => setProjectCode(v)}
-                      noneLabel="— ninguno —"
-                      searchPlaceholder="Buscar proyecto..."
-                    />
-                  </Field>
+              <Field label="Título" required className="md:hidden">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="Nombre del proceso"
+                  required
+                  className={baseCls}
+                />
+              </Field>
+
+              <Field label="Icono">
+                <EmojiPicker value={icon} onChange={setIcon} />
+              </Field>
+
+              <Field label="Proceso padre">
+                <SearchSelect
+                  options={parentPages.map(p => ({ value: p.id, label: p.title }))}
+                  value={parentPageId}
+                  onChange={v => setParentPageId(v)}
+                  placeholder="— ninguno (raíz) —"
+                  noneLabel="— ninguno (raíz) —"
+                  searchPlaceholder="Buscar proceso padre..."
+                  disabled={parentPages.length === 0}
+                />
+              </Field>
+
+              <hr className="border-[var(--c-border)]" />
+
+              {/* Relations — collapsible */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setRelationsOpen(o => !o)}
+                  className="flex w-full items-center justify-between"
+                >
+                  <span className={labelCls}>Vincular a</span>
+                  <svg
+                    viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
+                    className={`transition-transform text-[var(--c-text-sub)] ${relationsOpen ? 'rotate-180' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {relationsOpen && (
+                  <div className="mt-3 space-y-3">
+                    {/* Type picker pills */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {LINK_TYPES.map(lt => (
+                        <button
+                          key={lt.value}
+                          type="button"
+                          onClick={() => {
+                            const next: LinkType = linkType === lt.value ? '' : lt.value;
+                            setLinkType(next);
+                            if (next !== 'tarea') setTaskId('');
+                            if (next !== 'epica') setEpicId('');
+                            if (next !== 'proyecto') setProjectCode('');
+                          }}
+                          className={[
+                            'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border',
+                            linkType === lt.value
+                              ? 'bg-[var(--c-text)] text-[var(--c-bg)] border-[var(--c-text)]'
+                              : 'text-[var(--c-text-sub)] border-[var(--c-border)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]',
+                          ].join(' ')}
+                        >
+                          {lt.icon}
+                          {lt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {linkType === 'tarea' && (
+                      <Field label="Tarea">
+                        <TaskSearchSelect
+                          tasks={allTasks}
+                          value={taskId}
+                          onChange={(tId, task) => {
+                            setTaskId(tId);
+                            if (task) setProjectCode(task.projectCode);
+                          }}
+                          loading={tasksLoading}
+                        />
+                      </Field>
+                    )}
+
+                    {linkType === 'epica' && (
+                      <Field label="Épica">
+                        <SearchSelect
+                          options={allEpics.map(e => ({ value: e.id, label: e.name, subLabel: e.projectName, colorKey: e.projectCode }))}
+                          value={epicId}
+                          onChange={v => setEpicId(v)}
+                          loading={epicsLoading}
+                          noneLabel="— ninguna —"
+                          searchPlaceholder="Buscar épica..."
+                        />
+                      </Field>
+                    )}
+
+                    {linkType === 'proyecto' && (
+                      <Field label="Proyecto">
+                        <SearchSelect
+                          options={allProjects.map(p => ({ value: p.code, label: p.name }))}
+                          value={projectCode}
+                          onChange={v => setProjectCode(v)}
+                          noneLabel="— ninguno —"
+                          searchPlaceholder="Buscar proyecto..."
+                        />
+                      </Field>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+              </div>
+            </div>
           </div>
         </aside>
-
-        {/* Right: rich text editor with toolbar */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden p-3">
-          <WikiEditor
-            content={content}
-            onChange={setContent}
-            placeholder="Describe el proceso aquí..."
-            title={title || undefined}
-          />
-        </div>
 
       </div>
     </form>

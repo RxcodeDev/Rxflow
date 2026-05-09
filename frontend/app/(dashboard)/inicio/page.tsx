@@ -89,6 +89,7 @@ export default function InicioPage() {
   const [cycles,   setCycles]   = useState<CycleSummary[]>([]);
   const [notifs,   setNotifs]   = useState<NotificationItem[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [greetingText, setGreetingText] = useState('');
 
   useEffect(() => { setGreetingText(greeting()); }, []);
@@ -103,13 +104,14 @@ export default function InicioPage() {
       apiGet<ApiWrapped<NotificationItem[]>>('/notifications'),
     ])
       .then(([mine, all, projs, cycs, nots]) => {
+        setFetchError(false);
         setMyTasks(mine.data);
         setAllTasks(all.data);
         setProjects(projs.data);
         setCycles(cycs.data);
         setNotifs(nots.data);
       })
-      .catch(console.error)
+      .catch(() => { if (isInitial) setFetchError(true); })
       .finally(() => { if (isInitial) setLoading(false); });
   }, []);
 
@@ -202,6 +204,14 @@ export default function InicioPage() {
         </h1>
         <p className="text-xs text-[var(--c-muted)] mt-0.5">{subtitleText}</p>
       </div>
+
+      {/* CONNECTION ERROR BANNER */}
+      {fetchError && !loading && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--c-danger)] bg-[var(--c-danger)]/5 text-[var(--c-danger)] text-xs">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          No se pudo conectar al servidor. Reintentando automáticamente…
+        </div>
+      )}
 
       {/* STAT ROW */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">

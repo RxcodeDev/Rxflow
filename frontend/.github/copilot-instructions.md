@@ -71,6 +71,15 @@ hooks/
   useSound.ts
 ```
 
+Wiki notes:
+- `components/features/wiki/WikiPageCard.tsx` usa un contenedor clickable con `router.push()`; no envolver toda la card en `Link` si existen acciones o sublinks internos.
+- `components/features/wiki/wikiIcons.ts` debe producir keys únicas por primitiva SVG para evitar warnings de React al abrir el selector de iconos.
+- `app/(dashboard)/herramientas/wiki/page.tsx` usa header apilado en mobile; selector de workspace, búsqueda y CTA deben ocupar ancho completo antes de `md`.
+- `components/features/wiki/WikiPageCard.tsx` debe mantener visible el botón de opciones en touch; no depender solo de `group-hover`.
+- `app/(dashboard)/herramientas/wiki/[id]/page.tsx` en mobile debe usar un trigger icon-only de acciones integrado en cabecera; evitar docks o botones circulares flotantes que se vean forzados.
+- `app/(dashboard)/herramientas/wiki/[id]/editar/page.tsx` en mobile debe priorizar el editor y mover la configuración a un panel plegable secundario.
+- `components/features/wiki/WikiEditor.tsx` en mobile debe permitir scroll horizontal en toolbar; no comprimir herramientas hasta romper el contenido.
+
 ---
 
 ## Design Tokens — ALL colors MUST use these variables

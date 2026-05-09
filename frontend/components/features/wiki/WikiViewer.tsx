@@ -3,6 +3,8 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
+import TextStyle from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
 import { useState, useRef, useEffect } from 'react';
 import { renderMarkdown } from '@/utils/markdown';
 import { ResizableImage } from './ResizableImage';
@@ -56,6 +58,8 @@ export function TiptapViewer({
       CodeBlockLowlight.configure({ lowlight }),
       Link.configure({ openOnClick: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } }),
       ResizableImage.configure({ allowBase64: true }),
+      TextStyle,
+      Color,
     ],
     content,
     editable: false,

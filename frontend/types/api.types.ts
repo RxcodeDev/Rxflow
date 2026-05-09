@@ -147,6 +147,7 @@ export interface WikiPageSummary {
   epic_id: string | null;
   task_id: string | null;
   parent_page_id: string | null;
+  icon: string | null;
   created_by: string;
   updated_by: string | null;
   created_at: string;
@@ -166,6 +167,7 @@ export interface WikiTreeNode {
   title: string;
   slug: string;
   parent_page_id: string | null;
+  icon: string | null;
   workspace_id: string;
   project_code: string | null;
   children: WikiTreeNode[];

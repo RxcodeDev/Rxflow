@@ -34,4 +34,9 @@ export class CreateWikiPageDto {
   @IsOptional()
   @IsUUID()
   parentPageId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  icon?: string;
 }
