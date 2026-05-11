@@ -1,0 +1,10 @@
+DB_USER=rxcode_dba
+DB_PASSWORD=Ldf04#1234.D%3
+DB_NAME=rxflow
+JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJEQl9VU0VSIjoiSFMyNTYiLCJEQl9QQVNTV09SRCI6IkpXVCIsIkRCX05BTUUiOiJyeGZsb3cifQ.jZs2uM_ifsiLO63rcfRaqBQpgN6tm0X16Lgq5Ut2Zg0
+
+DATABASE_URL=postgresql://rxcode_dba:Ldf04%231234.D%253@postgres:5432/rxflow
+
+# Sentry (dejar vacío hasta tener DSN)
+SENTRY_DSN=
+NEXT_PUBLIC_SENTRY_DSN=

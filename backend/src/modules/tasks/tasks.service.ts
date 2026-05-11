@@ -69,6 +69,7 @@ export class TasksService {
   create(dto: {
     projectCode: string;
     title: string;
+    description?: string | null;
     priority: string;
     status: string;
     assigneeIds?: string[];

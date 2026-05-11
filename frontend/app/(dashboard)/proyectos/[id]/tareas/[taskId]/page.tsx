@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import { useUIDispatch } from '@/store/UIContext';
 import { bumpTasks } from '@/store/slices/uiSlice';
 import s from '@/components/features/tasks/TaskDrawer.module.css';
@@ -13,6 +13,7 @@ import {
 import DescriptionEditor from '@/components/features/tasks/DescriptionEditor';
 import CommentEditor, { type CommentDoc } from '@/components/features/tasks/CommentEditor';
 import { TiptapViewer } from '@/components/features/wiki/WikiViewer';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { MemberItem, ApiWrapped } from '@/types/api.types';
 
 /* ── Types ───────────────────────────────────────────── */
@@ -45,6 +46,42 @@ interface TaskDetail {
 type EpicOpt = { id: string; name: string };
 type UserOpt = { id: string; name: string; initials: string; avatarUrl: string | null; avatarColor: string | null };
 type TabType = 'comments' | 'activity';
+
+/* ── Calendar helpers ────────────────────────────────── */
+const CALENDAR_MONTH = new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric' });
+const CALENDAR_DAY   = new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short', year: 'numeric' });
+const CALENDAR_WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+function toDateInputValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function parseDateValue(value: string | null): Date | null {
+  if (!value) return null;
+  const [y, mo, d] = value.substring(0, 10).split('-').map(Number);
+  if (!y || !mo || !d) return null;
+  return new Date(y, mo - 1, d);
+}
+function buildCalendarDays(viewDate: Date) {
+  const firstDay = startOfMonth(viewDate);
+  const monthIndex = firstDay.getMonth();
+  const startWeekday = (firstDay.getDay() + 6) % 7;
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - startWeekday);
+  return Array.from({ length: 42 }).map((_, i) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + i);
+    return { key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`, date, inMonth: date.getMonth() === monthIndex };
+  });
+}
 
 /* ── Helpers ─────────────────────────────────────────── */
 function Skel({ w, h = 14 }: { w: number | string; h?: number }) {
@@ -102,6 +139,15 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
   const [tab,         setTab]        = useState<TabType>('comments');
   const [posting,     setPosting]    = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [isEditing,    setIsEditing]    = useState(false);
+  const [menuOpen,     setMenuOpen]     = useState(false);
+  const [deleteOpen,   setDeleteOpen]   = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [dateMenuOpen, setDateMenuOpen] = useState(false);
+  const [dateView,     setDateView]     = useState<Date>(() => startOfMonth(new Date()));
+  const menuBtnRef  = useRef<HTMLButtonElement>(null);
+  const menuRef     = useRef<HTMLDivElement>(null);
+  const dateWrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -156,6 +202,39 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
     finally { setPosting(false); }
   }
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node) && !menuBtnRef.current?.contains(e.target as Node))
+        setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!dateMenuOpen) return;
+    function handler(e: MouseEvent) {
+      if (!dateWrapRef.current?.contains(e.target as Node)) setDateMenuOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dateMenuOpen]);
+
+  function applyDueDate(value: string | null) {
+    patchTask({ due_date: value }, { dueDate: value });
+  }
+
+  async function deleteTask() {
+    if (!task) return;
+    setDeleting(true);
+    try {
+      await apiDelete(`/tasks/${task.id}`);
+      router.push(`/proyectos/${projectCode}/board`);
+    } catch (e) { console.error(e); }
+    finally { setDeleting(false); }
+  }
+
   const statusMeta = STATUS_META[task?.status ?? ''] ?? STATUS_META.backlog;
   const prioMeta   = PRIO_META[task?.priority ?? ''] ?? PRIO_META.media;
 
@@ -163,68 +242,6 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
     <>
       {/* ── 100dvh shell ── */}
       <div className="-m-6 flex flex-col bg-[var(--c-bg)]" style={{ height: '100dvh' }}>
-
-        {/* ── Header ── */}
-        <div className={s.header} style={{ paddingLeft: '0.75rem', paddingRight: '0.75rem' }}>
-          {/* Back */}
-          <button
-            type="button"
-            onClick={() => router.push(`/proyectos/${projectCode}/board`)}
-            className={s.iconBtn}
-            aria-label="Volver al proyecto"
-            title="Volver al proyecto"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-
-          <div className={s.headerLeft}>
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <Skel w={48} h={20} />
-                <Skel w={160} h={14} />
-              </div>
-            ) : task ? (
-              <div className={s.headerTitleWrap}>
-                <div className={s.headerTitleRow}>
-                  <svg
-                    className={s.headerTaskIcon}
-                    style={{ color: STATUS_META[task.status]?.color ?? 'var(--c-muted)' }}
-                    viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <path d="M9 9h6M9 12h6M9 15h4"/>
-                  </svg>
-                  <span className={s.headerId}>{task.identifier}</span>
-                  <span className={s.headerSep} aria-hidden="true">/</span>
-                  <span className={s.headerProject}>{task.project_name}</span>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Right: status + priority pills */}
-          {task && (
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <span
-                className="hidden sm:flex items-center gap-1.5 text-[0.75rem] font-medium px-2 py-0.5 rounded-full border"
-                style={{ color: statusMeta.color, borderColor: `${statusMeta.color}33`, background: `${statusMeta.color}11` }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusMeta.color }} aria-hidden="true" />
-                {statusMeta.label}
-              </span>
-              <span
-                className="hidden md:flex items-center gap-1 text-[0.75rem] font-medium px-2 py-0.5 rounded-full border"
-                style={{ color: prioMeta.color, borderColor: `${prioMeta.color}33`, background: `${prioMeta.color}11` }}
-              >
-                <span style={{ fontSize: '0.4375rem' }} aria-hidden="true">▲</span>
-                {prioMeta.label}
-              </span>
-            </div>
-          )}
-        </div>
 
         {/* ── Body ── */}
         <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -240,15 +257,104 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
                     <Skel w="75%" h={22} />
                   </div>
                 ) : (
-                  <>
-                    {/* Mobile pills row */}
+                  <div style={{ position: 'relative' }}>
+                    {/* Save + 3-dots menu */}
+                    <div style={{ position: 'absolute', top: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.25rem', zIndex: 10 }}>
+                      {isEditing && (
+                        <button type="button" className={s.iconBtnSave} onClick={() => setIsEditing(false)} title="Guardar cambios">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                            <polyline points="17 21 17 13 7 13 7 21"/>
+                            <polyline points="7 3 7 8 15 8"/>
+                          </svg>
+                        </button>
+                      )}
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          ref={menuBtnRef}
+                          type="button"
+                          className={`${s.iconBtn} ${menuOpen ? s.iconBtnActive : ''}`}
+                          onClick={() => setMenuOpen(v => !v)}
+                          title="Más opciones"
+                          disabled={!task}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                          </svg>
+                        </button>
+                        {menuOpen && task && (
+                          <div ref={menuRef} className={s.headerMenu}>
+                            {!isEditing && (
+                              <button className={s.headerMenuItem} onClick={() => { setIsEditing(true); setMenuOpen(false); }}>
+                                Editar tarea
+                              </button>
+                            )}
+                            <button className={`${s.headerMenuItem} ${s.headerMenuItemDanger}`} onClick={() => { setDeleteOpen(true); setMenuOpen(false); }}>
+                              Eliminar tarea
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <input
+                      className={`${s.editableTitle} ${!isEditing ? s.headerTitleLocked : ''}`}
+                      readOnly={!isEditing}
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      onBlur={saveTitle}
+                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      placeholder="Título de la tarea"
+                      aria-label="Título"
+                    />
+
+                    {/* Breadcrumb + all properties row */}
                     {task && (
-                      <div className="flex flex-wrap gap-1.5 mb-3 md:hidden">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2 pb-1">
+
+                        {/* Back + breadcrumb */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/proyectos/${projectCode}/board`)}
+                            className={s.iconBtn}
+                            aria-label="Volver al proyecto"
+                            title="Volver al proyecto"
+                            style={{ width: 24, height: 24 }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <polyline points="15 18 9 12 15 6" />
+                            </svg>
+                          </button>
+                          <div className={s.headerTitleRow}>
+                            <svg
+                              className={s.headerTaskIcon}
+                              style={{ color: STATUS_META[task.status]?.color ?? 'var(--c-muted)' }}
+                              viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                            >
+                              <rect x="3" y="3" width="18" height="18" rx="2"/>
+                              <path d="M9 9h6M9 12h6M9 15h4"/>
+                            </svg>
+                            <span className={s.headerId}>{task.identifier}</span>
+                            <span className={s.headerSep} aria-hidden="true">/</span>
+                            <span className={s.headerProject}>{task.project_name}</span>
+                          </div>
+                        </div>
+
+                        {/* Separator */}
+                        <span aria-hidden="true" style={{ color: 'var(--c-border)' }}>·</span>
+
+                        {/* Estado */}
                         <StatusPill value={task.status} onChange={v => patchTask({ status: v }, { status: v })} />
-                        <PriorityPill value={task.priority} onChange={v => patchTask({ priority: v }, { priority: v })} />
+
+                        {/* Prioridad */}
+                        <PriorityPill value={task.priority} onChange={v => patchTask({ priority: v }, { priority: v })} disabled={!isEditing} />
+
+                        {/* Asignados */}
                         <AssigneesPill
                           assignees={task.assignees ?? []}
                           users={users}
+                          disabled={!isEditing}
                           onChange={uids => {
                             const u0 = users.find(x => x.id === uids[0]);
                             const newAssignees = uids.map(uid => {
@@ -261,18 +367,103 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
                             );
                           }}
                         />
+
+                        {/* Épica */}
+                        <EpicPill
+                          value={task.epic_id}
+                          epics={epics}
+                          disabled={!isEditing}
+                          onChange={eid => {
+                            const ep = epics.find(x => x.id === eid);
+                            patchTask({ epic_id: eid, epic_name: ep?.name ?? null }, { epicId: eid });
+                          }}
+                        />
+
+                        {/* Fecha límite */}
+                        <div ref={dateWrapRef} className={s.dateFieldWrap} style={{ flex: 'none' }}>
+                          <button
+                            type="button"
+                            className={`${s.propPill} ${!isEditing ? s.propPillStatic : ''}`}
+                            style={{ cursor: isEditing ? 'pointer' : 'default' }}
+                            onClick={() => {
+                              if (!isEditing) return;
+                              setDateView(startOfMonth(parseDateValue(task.due_date) ?? new Date()));
+                              setDateMenuOpen(o => !o);
+                            }}
+                            disabled={!isEditing}
+                            aria-expanded={dateMenuOpen}
+                          >
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span className={s.propPillText}>
+                              {task.due_date
+                                ? CALENDAR_DAY.format(parseDateValue(task.due_date) ?? new Date(task.due_date))
+                                : 'Sin fecha'}
+                            </span>
+                          </button>
+                          {isEditing && dateMenuOpen && (
+                            <div className={s.datePopover}>
+                              <div className={s.datePopoverHeader}>
+                                <button type="button" className={s.dateNavBtn} onClick={() => setDateView(c => addMonths(c, -1))} aria-label="Mes anterior">
+                                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                                </button>
+                                <span className={s.datePopoverTitle}>{CALENDAR_MONTH.format(dateView).replace(/^\w/, c => c.toUpperCase())}</span>
+                                <button type="button" className={s.dateNavBtn} onClick={() => setDateView(c => addMonths(c, 1))} aria-label="Mes siguiente">
+                                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                                </button>
+                              </div>
+                              <div className={s.dateWeekdays}>
+                                {CALENDAR_WEEKDAYS.map((label, idx) => (
+                                  <span key={`wd-${idx}`} className={s.dateWeekday}>{label}</span>
+                                ))}
+                              </div>
+                              <div className={s.dateGrid}>
+                                {buildCalendarDays(dateView).map(({ key, date, inMonth }) => {
+                                  const cur = task.due_date ? task.due_date.substring(0, 10) : null;
+                                  const next = toDateInputValue(date);
+                                  const isSelected = cur === next;
+                                  const isToday = next === toDateInputValue(new Date());
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      className={`${s.dateCell} ${!inMonth ? s.dateCellMuted : ''} ${isSelected ? s.dateCellSelected : ''} ${isToday ? s.dateCellToday : ''}`}
+                                      onClick={() => { applyDueDate(next); setDateMenuOpen(false); }}
+                                    >
+                                      {date.getDate()}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className={s.datePopoverFooter}>
+                                <button type="button" className={s.dateFooterBtn} onClick={() => setDateView(startOfMonth(new Date()))}>Hoy</button>
+                                <button type="button" className={s.dateFooterBtn} onClick={() => { applyDueDate(null); setDateMenuOpen(false); }}>Borrar</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Identificador */}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3125rem', padding: '0.1875rem 0.4375rem', borderRadius: '0.3125rem', border: '1px solid var(--c-border)', background: 'var(--c-bg)', fontSize: '0.8125rem', fontWeight: 600, fontFamily: 'ui-monospace, monospace', color: 'var(--c-accent)' }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/>
+                            <line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>
+                          </svg>
+                          {task.identifier}
+                        </span>
+
+                        {/* Creado por */}
+                        <div className="flex items-center gap-1.5">
+                          <DrawerAvatar initials={task.creator_initials} avatarUrl={task.creator_avatar_url ?? null} avatarColor={task.creator_avatar_color ?? null} size={18} />
+                          <span style={{ fontSize: '0.8125rem', color: 'var(--c-text-sub)' }}>{task.creator_name}</span>
+                          <span className={s.propTime}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            {timeAgo(task.created_at)}
+                          </span>
+                        </div>
+
                       </div>
                     )}
-                    <input
-                      className={s.editableTitle}
-                      value={editTitle}
-                      onChange={e => setEditTitle(e.target.value)}
-                      onBlur={saveTitle}
-                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                      placeholder="Título de la tarea"
-                      aria-label="Título"
-                    />
-                  </>
+                  </div>
                 )}
               </div>
 
@@ -291,7 +482,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
                     <Skel w="70%" h={13} />
                     <Skel w="55%" h={13} />
                   </div>
-                ) : !task?.description ? (
+) : !isEditing && !task?.description ? (
                   <div className={s.descEmpty}>
                     <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -302,8 +493,9 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
                   </div>
                 ) : (
                   <DescriptionEditor
-                    initialContent={task.description ?? null}
+                    initialContent={task?.description ?? null}
                     onSave={saveDesc}
+                    disabled={!isEditing}
                     onLightbox={setLightboxSrc}
                   />
                 )}
@@ -416,126 +608,6 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
             </div>
           </div>{/* /left */}
 
-          {/* ── Right: properties panel (desktop only) ── */}
-          <aside className="hidden md:flex flex-col flex-shrink-0 w-[300px] overflow-y-auto border-l border-[var(--c-border)]">
-
-            {loading ? (
-              <div className={s.propsSection}>
-                <div className="flex flex-col gap-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex flex-col gap-1.5">
-                      <Skel w={52} h={10} />
-                      <Skel w={120} h={28} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : task ? (
-              <div className={s.propsSection}>
-                <div className={s.propList}>
-
-                  {/* Estado / Prioridad */}
-                  <div className={s.propRow}>
-                    <span className={s.propRowLabel}>Estado</span>
-                    <StatusPill value={task.status} onChange={v => patchTask({ status: v }, { status: v })} />
-                  </div>
-                  <div className={s.propRow}>
-                    <span className={s.propRowLabel}>Prioridad</span>
-                    <PriorityPill value={task.priority} onChange={v => patchTask({ priority: v }, { priority: v })} />
-                  </div>
-
-                  {/* Asignados / Épica */}
-                  <div className={s.propRow}>
-                    <span className={s.propRowLabel}>Asignados</span>
-                    <AssigneesPill
-                      assignees={task.assignees ?? []}
-                      users={users}
-                      onChange={uids => {
-                        const u0 = users.find(x => x.id === uids[0]);
-                        const newAssignees = uids.map(uid => {
-                          const u = users.find(x => x.id === uid);
-                          return { id: uid, name: u?.name ?? '', initials: u?.initials ?? '', avatar_color: u?.avatarColor ?? null, avatar_url: u?.avatarUrl ?? null };
-                        });
-                        patchTask(
-                          { assignees: newAssignees, assignee_id: uids[0] ?? null, assignee_name: u0?.name ?? null, assignee_initials: u0?.initials ?? null },
-                          { assigneeIds: uids },
-                        );
-                      }}
-                    />
-                  </div>
-                  <div className={s.propRow}>
-                    <span className={s.propRowLabel}>Épica</span>
-                    <EpicPill
-                      value={task.epic_id}
-                      epics={epics}
-                      onChange={eid => {
-                        const ep = epics.find(x => x.id === eid);
-                        patchTask({ epic_id: eid, epic_name: ep?.name ?? null }, { epicId: eid });
-                      }}
-                    />
-                  </div>
-
-                  {/* Fecha / Identificador */}
-                  <div className={s.propRow}>
-                    <span className={s.propRowLabel}>Fecha límite</span>
-                    <input
-                      type="date"
-                      className={s.propPill}
-                      style={{ cursor: 'pointer', width: '100%' }}
-                      value={task.due_date ? task.due_date.substring(0, 10) : ''}
-                      onChange={e => {
-                        const val = e.target.value || null;
-                        patchTask({ due_date: val }, { dueDate: val });
-                      }}
-                    />
-                  </div>
-                  <div className={s.propRow}>
-                    <span className={s.propRowLabel}>Identificador</span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3125rem', padding: '0.1875rem 0.4375rem', borderRadius: '0.3125rem', border: '1px solid var(--c-border)', background: 'var(--c-bg)', fontSize: '0.8125rem', fontWeight: 600, fontFamily: 'ui-monospace, monospace', color: 'var(--c-accent)' }}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/>
-                        <line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>
-                      </svg>
-                      {task.identifier}
-                    </span>
-                  </div>
-
-                  {/* Proyecto — full width */}
-                  <div className={`${s.propRow} ${s.propRowFull}`}>
-                    <span className={s.propRowLabel}>Proyecto</span>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.04em', padding: '0.1875rem 0.4375rem', borderRadius: '0.3125rem', border: '1.5px solid var(--c-accent)', color: 'var(--c-accent)', flexShrink: 0 }}>
-                        {task.project_code}
-                      </span>
-                      <span style={{ fontSize: '0.8125rem', color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.project_name}</span>
-                    </div>
-                  </div>
-
-                  {/* Creado por — full width */}
-                  <div className={`${s.propRow} ${s.propRowFull}`}>
-                    <span className={s.propRowLabel}>Creado por</span>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <DrawerAvatar
-                        initials={task.creator_initials}
-                        avatarUrl={task.creator_avatar_url ?? null}
-                        avatarColor={task.creator_avatar_color ?? null}
-                        size={18}
-                      />
-                      <span style={{ fontSize: '0.8125rem', color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.creator_name}</span>
-                      <span className={s.propTime}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                        </svg>
-                        {timeAgo(task.created_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            ) : null}
-          </aside>
-
         </div>{/* /body */}
       </div>{/* /shell */}
 
@@ -567,6 +639,15 @@ export default function TaskPage({ params }: { params: Promise<{ id: string; tas
           />
         </div>
       )}
+
+      <ConfirmModal
+        open={deleteOpen}
+        title="Eliminar tarea"
+        message={`¿Eliminar "${task?.title}"? Esta acción es irreversible.`}
+        confirmLabel="Eliminar"
+        onConfirm={deleteTask}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </>
   );
 }

@@ -173,6 +173,8 @@ export default function PreferenciasPage() {
   const { lang, setLang, t } = useLang();
   const [notif, setNotif] = useState<NotifPrefs>(DEFAULT_NOTIF);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     apiGet<NotifPrefs>('/notifications/prefs')
@@ -188,6 +190,31 @@ export default function PreferenciasPage() {
       setNotif((prev) => ({ ...prev, [key]: !value }));
     });
   }, [notif]);
+
+  const handleExport = useCallback(async (format: 'json' | 'markdown') => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('rxflow_token') : null;
+      const endpoint = format === 'markdown' ? 'http://localhost:3000/export/markdown' : 'http://localhost:3000/export/full';
+      const ext = format === 'markdown' ? 'md' : 'json';
+      const res = await fetch(endpoint, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rxflow-export-${new Date().toISOString().split('T')[0]}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Error al exportar');
+    } finally {
+      setExporting(false);
+    }
+  }, []);
 
   const themeOptions: { key: Theme; label: string }[] = [
     { key: 'light',  label: t('light')  },
@@ -263,6 +290,62 @@ export default function PreferenciasPage() {
                 {t('deleteBtn')}
               </button>
             </FieldRow>
+          </div>
+        </section>
+
+        {/* Exportar datos — full width */}
+        <section className="flex flex-col gap-3 md:col-span-2">
+          <Label>Exportar datos</Label>
+          <div className="flex flex-col border border-[var(--c-border)] rounded-xl overflow-hidden">
+            <FieldRow
+              label="Markdown — para IA"
+              description="Formato legible para LLMs: nombres reales, jerarquías, contenido wiki en texto. Ideal para pegar en ChatGPT, Claude, etc."
+            >
+              <button
+                type="button"
+                onClick={() => handleExport('markdown')}
+                disabled={exporting}
+                className="shrink-0 flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-[var(--c-text)] text-[var(--c-bg)] hover:opacity-80 disabled:opacity-50 transition-opacity font-[inherit] cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {exporting ? (
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true" className="animate-spin"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                )}
+                {exporting ? 'Exportando...' : 'Descargar .md'}
+              </button>
+            </FieldRow>
+            <FieldRow
+              label="JSON — datos completos"
+              description="Todos los datos en bruto con IDs. útil para integraciones técnicas o backups."
+            >
+              <button
+                type="button"
+                onClick={() => handleExport('json')}
+                disabled={exporting}
+                className="shrink-0 flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-[var(--c-border)] text-[var(--c-text)] bg-[var(--c-bg)] hover:bg-[var(--c-hover)] disabled:opacity-50 transition-colors font-[inherit] cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {exporting ? (
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true" className="animate-spin"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                )}
+                {exporting ? 'Exportando...' : 'Descargar .json'}
+              </button>
+            </FieldRow>
+            {exportError && (
+              <div className="px-4 py-2 text-[12px] text-[var(--c-danger)] border-t border-[var(--c-line)]">
+                {exportError}
+              </div>
+            )}
           </div>
         </section>
 

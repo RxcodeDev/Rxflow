@@ -110,6 +110,7 @@ export class TasksRepository {
   async create(dto: {
     projectCode:   string;
     title:         string;
+    description?:  string | null;
     priority:      string;
     status:        string;
     assigneeIds?:  string[];
@@ -142,6 +143,7 @@ export class TasksRepository {
           project_id:     project.id,
           sequential_id:  Number(next_id),
           title:          dto.title,
+          description:    dto.description ?? null,
           priority:       dto.priority.toLowerCase(),
           status:         dto.status,
           assignee_id:    primaryId,

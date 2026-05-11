@@ -9,7 +9,7 @@
 --   - content stored as JSONB (Tiptap ProseMirror JSON doc).
 -- =============================================================================
 
-CREATE TABLE "wiki_pages" (
+CREATE TABLE IF NOT EXISTS "wiki_pages" (
     "id"             UUID         NOT NULL DEFAULT gen_random_uuid(),
     "license_id"     UUID         NOT NULL,
     "title"          VARCHAR(500) NOT NULL,
@@ -29,24 +29,30 @@ CREATE TABLE "wiki_pages" (
 );
 
 -- Tenant isolation FK
-ALTER TABLE "wiki_pages"
-    ADD CONSTRAINT "wiki_pages_license_id_fkey"
-    FOREIGN KEY ("license_id") REFERENCES "licenses"("id")
-    ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "wiki_pages"
+        ADD CONSTRAINT "wiki_pages_license_id_fkey"
+        FOREIGN KEY ("license_id") REFERENCES "licenses"("id")
+        ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Self-referential hierarchy
-ALTER TABLE "wiki_pages"
-    ADD CONSTRAINT "wiki_pages_parent_page_id_fkey"
-    FOREIGN KEY ("parent_page_id") REFERENCES "wiki_pages"("id")
-    ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+    ALTER TABLE "wiki_pages"
+        ADD CONSTRAINT "wiki_pages_parent_page_id_fkey"
+        FOREIGN KEY ("parent_page_id") REFERENCES "wiki_pages"("id")
+        ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Slug unique per license
-CREATE UNIQUE INDEX "wiki_pages_license_id_slug_key" ON "wiki_pages"("license_id", "slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "wiki_pages_license_id_slug_key" ON "wiki_pages"("license_id", "slug");
 
 -- Query indexes
-CREATE INDEX "wiki_pages_license_id_idx"    ON "wiki_pages"("license_id");
-CREATE INDEX "wiki_pages_project_code_idx"  ON "wiki_pages"("project_code");
-CREATE INDEX "wiki_pages_workspace_id_idx"  ON "wiki_pages"("workspace_id");
-CREATE INDEX "wiki_pages_epic_id_idx"       ON "wiki_pages"("epic_id");
-CREATE INDEX "wiki_pages_task_id_idx"       ON "wiki_pages"("task_id");
-CREATE INDEX "wiki_pages_parent_page_idx"   ON "wiki_pages"("parent_page_id");
+CREATE INDEX IF NOT EXISTS "wiki_pages_license_id_idx"   ON "wiki_pages"("license_id");
+CREATE INDEX IF NOT EXISTS "wiki_pages_project_code_idx" ON "wiki_pages"("project_code");
+CREATE INDEX IF NOT EXISTS "wiki_pages_workspace_id_idx" ON "wiki_pages"("workspace_id");
+CREATE INDEX IF NOT EXISTS "wiki_pages_epic_id_idx"      ON "wiki_pages"("epic_id");
+CREATE INDEX IF NOT EXISTS "wiki_pages_task_id_idx"      ON "wiki_pages"("task_id");
+CREATE INDEX IF NOT EXISTS "wiki_pages_parent_page_idx"  ON "wiki_pages"("parent_page_id");

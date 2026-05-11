@@ -19,14 +19,19 @@ psql "$DATABASE_URL" -c "
 for file in /app/src/database/migrations/V*.sql; do
   filename=$(basename "$file")
   count=$(psql "$DATABASE_URL" -t -c \
-    "SELECT COUNT(*) FROM _raw_migrations WHERE filename = '$filename';" \
+    "SELECT COUNT(*) FROM _raw_migrations WHERE filename = '$(echo "$filename" | sed "s/'/''/g")';" \
     | tr -d ' \n')
 
   if [ "$count" = "0" ]; then
     echo "  → Applying $filename ..."
-    psql "$DATABASE_URL" -f "$file"
-    psql "$DATABASE_URL" -c \
-      "INSERT INTO _raw_migrations (filename) VALUES ('$filename');" > /dev/null
+    # Run migration + mark as applied in a single transaction so partial
+    # failures never leave an untracked half-applied migration.
+    psql "$DATABASE_URL" <<SQL
+BEGIN;
+\i $file
+INSERT INTO _raw_migrations (filename) VALUES ('$filename');
+COMMIT;
+SQL
     echo "  ✓ $filename applied"
   else
     echo "  · $filename already applied"

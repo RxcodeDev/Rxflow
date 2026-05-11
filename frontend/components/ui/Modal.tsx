@@ -7,10 +7,11 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   actions?: ReactNode;
+  wide?: boolean;
   children: ReactNode;
 }
 
-export default function Modal({ open, onClose, title, actions, children }: ModalProps) {
+export default function Modal({ open, onClose, title, actions, wide = false, children }: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -28,7 +29,7 @@ export default function Modal({ open, onClose, title, actions, children }: Modal
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-[var(--c-bg)] border border-[var(--c-border)] rounded-[1.25rem] flex flex-col max-h-[calc(100vh-2rem)] overflow-hidden"
+        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-md'} bg-[var(--c-bg)] border border-[var(--c-border)] rounded-[1.25rem] flex flex-col max-h-[calc(100vh-2rem)] overflow-hidden transition-[max-width] duration-200`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

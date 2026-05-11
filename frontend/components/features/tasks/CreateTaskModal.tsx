@@ -1,28 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { ChangeEvent, FormEvent, ReactNode } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import TaskForm from '@/components/features/tasks/TaskForm';
 import { useUIState, useUIDispatch } from '@/store/UIContext';
 import { closeCreateModal, bumpProjects } from '@/store/slices/uiSlice';
 import { apiGet, apiPost } from '@/lib/api';
-import type { ProjectSummary, MemberItem, TaskItem, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
-import { playSuccess, SOUND_DURATION_MS } from '@/hooks/useSound';
+import type { ProjectSummary, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
+import { playSuccess } from '@/hooks/useSound';
 import { useDebounce } from '@/hooks/useDebounce';
-
-/* ── Local types ─────────────────────────────────────── */
-interface EpicItem { id: string; name: string; status: string; }
-
-/* ── Constants ───────────────────────────────────────── */
-const PRIORITIES = ['Urgente', 'Alta', 'Media', 'Baja'] as const;
-type Priority = (typeof PRIORITIES)[number];
-
-const PRIORITY_MAP: Record<Priority, string> = {
-  Urgente: 'urgente', Alta: 'alta', Media: 'media', Baja: 'baja',
-};
 
 const METHODOLOGIES = ['Scrum', 'Kanban', 'Shape Up'] as const;
 type Methodology = (typeof METHODOLOGIES)[number];
@@ -35,7 +25,6 @@ const baseCls =
   'placeholder:text-[var(--c-muted)] ' +
   'focus:border-[var(--c-text-sub)] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.06)]';
 
-const selectCls = baseCls + ' pr-8 appearance-none cursor-pointer';
 const labelCls = 'text-[0.75rem] font-semibold text-[var(--c-text-sub)] tracking-[0.02em]';
 
 /* ── Field wrapper ───────────────────────────────────── */
@@ -63,44 +52,7 @@ function Field({
   );
 }
 
-/* ── Native select with chevron ──────────────────────── */
-function NativeSelect({
-  id,
-  value,
-  onChange,
-  disabled,
-  children,
-}: {
-  id: string;
-  value: string;
-  onChange: (e: ChangeEvent<HTMLSelectElement>) => void;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="relative">
-      <select
-        id={id}
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        className={selectCls + (disabled ? ' opacity-60 cursor-not-allowed' : '')}
-      >
-        {children}
-      </select>
-      <span
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]"
-        aria-hidden="true"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M2 4l4 4 4-4" />
-        </svg>
-      </span>
-    </div>
-  );
-}
-
-/* ── Pill group ──────────────────────────────────────── */
+/* ── Pill group (used by ProjectForm) ───────────────────── */
 function PillGroup<T extends string>({
   label,
   options,
@@ -134,296 +86,6 @@ function PillGroup<T extends string>({
         ))}
       </div>
     </Field>
-  );
-}
-
-/* ── Modal footer ────────────────────────────────────── */
-function ModalFooter({ onClose, loading }: { onClose: () => void; loading?: boolean }) {
-  return (
-    <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-[var(--c-border)]">
-      <Button type="button" variant="ghost" style={{ width: 'auto' }} onClick={onClose}>
-        Cancelar
-      </Button>
-      <Button type="submit" variant="primary" style={{ width: 'auto' }} loading={loading}>
-        Crear
-      </Button>
-    </div>
-  );
-}
-
-/* ── Task / Subtask form ─────────────────────────────── */
-function TaskSubtaskForm({
-  context,
-  onClose,
-}: {
-  context: 'task' | 'subtask';
-  onClose: () => void;
-}) {
-  const { activeProjectId, activeTaskId } = useUIState();
-
-  /* fetched data */
-  const [projects,    setProjects]    = useState<ProjectSummary[]>([]);
-  const [members,     setMembers]     = useState<MemberItem[]>([]);
-  const [epics,       setEpics]       = useState<EpicItem[]>([]);
-  const [parentTasks, setParentTasks] = useState<TaskItem[]>([]);
-  const [loadingBase, setLoadingBase] = useState(true);
-
-  /* form values */
-  const [title,        setTitle]        = useState('');
-  const [titleError,   setTitleError]   = useState('');
-  const [projectCode,  setProjectCode]  = useState('');
-  const [epicId,       setEpicId]       = useState('');
-  const [parentTaskId, setParentTaskId] = useState('');
-  const [priority,     setPriority]     = useState<Priority>('Media');
-  const [assigneeIds,  setAssigneeIds]  = useState<string[]>([]);
-  const [dueDate,      setDueDate]      = useState('');
-  const [submitting,   setSubmitting]   = useState(false);
-  const [submitError,  setSubmitError]  = useState('');
-
-  /* load projects + users once */
-  useEffect(() => {
-    Promise.all([
-      apiGet<ApiWrapped<ProjectSummary[]>>('/projects'),
-      apiGet<ApiWrapped<MemberItem[]>>('/users'),
-    ])
-      .then(([pRes, mRes]) => {
-        const list = pRes.data;
-        setProjects(list);
-        setMembers(mRes.data);
-        const initialCode = activeProjectId
-          ? (list.find(p => p.code.toLowerCase() === activeProjectId.toLowerCase())?.code ?? list[0]?.code ?? '')
-          : (list[0]?.code ?? '');
-        setProjectCode(initialCode);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingBase(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /* reload epics + parent tasks when project changes */
-  useEffect(() => {
-    if (!projectCode) return;
-    Promise.all([
-      apiGet<ApiWrapped<EpicItem[]>>(`/projects/${projectCode}/epics`),
-      apiGet<ApiWrapped<TaskItem[]>>(`/tasks?projectCode=${projectCode}`),
-    ])
-      .then(([eRes, tRes]) => {
-        setEpics(eRes.data.filter(e => e.status === 'activa'));
-        setParentTasks(tRes.data);
-        setEpicId('');
-        setParentTaskId(
-          context === 'subtask' && activeTaskId
-            ? (tRes.data.find(t => t.id === activeTaskId)?.id ?? '')
-            : '',
-        );
-      })
-      .catch(console.error);
-  }, [projectCode, context, activeTaskId]);
-
-  const handleProjectChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    setProjectCode(e.target.value);
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      setTitleError('El título es requerido');
-      return;
-    }
-    setSubmitting(true);
-    setSubmitError('');
-    try {
-      await apiPost('/tasks', {
-        projectCode,
-        title: title.trim(),
-        priority: PRIORITY_MAP[priority],
-        status: 'backlog',
-        assigneeIds: assigneeIds.length > 0 ? assigneeIds : [],
-        epicId:       epicId       || null,
-        parentTaskId: context === 'subtask' ? (parentTaskId || null) : null,
-        dueDate:      dueDate      || null,
-      });
-      playSuccess();
-      onClose();
-      setTimeout(() => window.location.reload(), SOUND_DURATION_MS);
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Error al crear la tarea');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const selectedProject = projects.find(p => p.code === projectCode);
-
-  return (
-    <form onSubmit={handleSubmit} noValidate>
-      <div className="flex flex-col gap-4 overflow-y-auto max-h-[58vh] pr-0.5">
-
-        {/* Título */}
-        <Input
-          id="ct-title"
-          label="Título"
-          placeholder="¿Qué hay que hacer?"
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            if (e.target.value.trim()) setTitleError('');
-          }}
-          error={titleError}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
-          autoComplete="off"
-        />
-
-        {/* Proyecto */}
-        {context === 'task' ? (
-          <Field label="Proyecto" htmlFor="ct-project">
-            <NativeSelect
-              id="ct-project"
-              value={projectCode}
-              onChange={handleProjectChange}
-              disabled={loadingBase}
-            >
-              {projects.map(p => (
-                <option key={p.code} value={p.code}>{p.name} ({p.code})</option>
-              ))}
-            </NativeSelect>
-          </Field>
-        ) : (
-          <Field label="Proyecto">
-            <p className={`${baseCls} text-[var(--c-text-sub)] bg-[var(--c-hover)] cursor-default`}>
-              {selectedProject ? `${selectedProject.name} (${selectedProject.code})` : '—'}
-            </p>
-          </Field>
-        )}
-
-        {/* Subtarea de — solo contexto subtask */}
-        {context === 'subtask' && (
-          <Field label="Subtarea de" htmlFor="ct-parent">
-            <NativeSelect
-              id="ct-parent"
-              value={parentTaskId}
-              onChange={(e) => setParentTaskId(e.target.value)}
-              disabled={loadingBase}
-            >
-              <option value="">Sin tarea padre</option>
-              {parentTasks.map(t => (
-                <option key={t.id} value={t.id}>{t.identifier} — {t.title}</option>
-              ))}
-            </NativeSelect>
-          </Field>
-        )}
-
-        {/* Épica */}
-        <Field label="Épica (opcional)" htmlFor="ct-epic">
-          <NativeSelect
-            id="ct-epic"
-            value={epicId}
-            onChange={(e) => setEpicId(e.target.value)}
-            disabled={loadingBase}
-          >
-            <option value="">Sin épica</option>
-            {epics.map(ep => (
-              <option key={ep.id} value={ep.id}>{ep.name}</option>
-            ))}
-          </NativeSelect>
-        </Field>
-
-        {/* Prioridad */}
-        <PillGroup
-          label="Prioridad"
-          options={PRIORITIES}
-          value={priority}
-          onChange={setPriority}
-        />
-
-        {/* Asignar a — multi-select */}
-        <Field label="Asignar a">
-          <div className="flex flex-col gap-2">
-            {/* Selected pills */}
-            {assigneeIds.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {assigneeIds.map(id => {
-                  const m = members.find(x => x.id === id);
-                  if (!m) return null;
-                  return (
-                    <span key={id} className="inline-flex items-center gap-1.5 text-[12px] font-medium rounded-full border border-[var(--c-border)] px-2.5 py-1 bg-[var(--c-hover)] text-[var(--c-text)]">
-                      <span className="w-4 h-4 rounded-full bg-[var(--c-avatar-bg)] text-[var(--c-avatar-fg)] text-[9px] font-bold flex items-center justify-center shrink-0">{m.initials}</span>
-                      {m.name}
-                      <button
-                        type="button"
-                        aria-label={`Quitar ${m.name}`}
-                        onClick={() => setAssigneeIds(prev => prev.filter(x => x !== id))}
-                        className="text-[var(--c-muted)] hover:text-[var(--c-danger)] transition-colors bg-transparent border-none cursor-pointer p-0 leading-none"
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            {/* Member list */}
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAssigneeIds([])}
-                className={
-                  'text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer font-[inherit] ' +
-                  (assigneeIds.length === 0
-                    ? 'border-[var(--c-text)] bg-[var(--c-hover)] text-[var(--c-text)] font-semibold'
-                    : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)]')
-                }
-              >
-                Sin asignar
-              </button>
-              {members.map(m => {
-                const selected = assigneeIds.includes(m.id);
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setAssigneeIds(prev =>
-                      selected ? prev.filter(x => x !== m.id) : [...prev, m.id]
-                    )}
-                    className={
-                      'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer font-[inherit] ' +
-                      (selected
-                        ? 'border-[var(--c-text)] bg-[var(--c-hover)] text-[var(--c-text)] font-semibold'
-                        : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)]')
-                    }
-                    disabled={loadingBase}
-                  >
-                    <span className="w-4 h-4 rounded-full bg-[var(--c-avatar-bg)] text-[var(--c-avatar-fg)] text-[9px] font-bold flex items-center justify-center shrink-0">{m.initials}</span>
-                    {m.name}
-                    {selected && (
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </Field>
-
-        {/* Fecha límite */}
-        <Field label="Fecha límite" htmlFor="ct-due">
-          <input
-            id="ct-due"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className={baseCls}
-          />
-        </Field>
-
-        {submitError && (
-          <p className="text-[0.75rem] text-[var(--c-danger)]">{submitError}</p>
-        )}
-      </div>
-
-      <ModalFooter onClose={onClose} loading={submitting} />
-    </form>
   );
 }
 
@@ -803,7 +465,7 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
         label="Metodología preferida"
         options={METHODOLOGIES}
         value={methodology}
-        onChange={(v) => setMethodology(v)}
+        onChange={(v: Methodology) => setMethodology(v)}
         hint="Puedes cambiarlo después en configuración"
       />
 
@@ -856,21 +518,46 @@ const MODAL_TITLES = {
 export default function CreateTaskModal() {
   const { isCreateModalOpen, createModalContext } = useUIState();
   const dispatch = useUIDispatch();
+  const [wide, setWide] = useState(false);
 
-  const handleClose = () => dispatch(closeCreateModal());
+  const handleClose = () => { dispatch(closeCreateModal()); setWide(false); };
+
+  const expandBtn = (createModalContext === 'task' || createModalContext === 'subtask') ? (
+    <button
+      type="button"
+      onClick={() => setWide(v => !v)}
+      className="flex items-center justify-center w-7 h-7 rounded-lg text-[var(--c-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-hover)] transition-colors cursor-pointer mr-1"
+      aria-label={wide ? 'Reducir modal' : 'Expandir modal'}
+      title={wide ? 'Reducir' : 'Expandir'}
+    >
+      {wide ? (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M16 3v3a2 2 0 0 0 2 2h3"/>
+          <path d="M8 21v-3a2 2 0 0 0-2-2H3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>
+        </svg>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/>
+          <path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+        </svg>
+      )}
+    </button>
+  ) : undefined;
 
   return (
     <Modal
       open={isCreateModalOpen}
       onClose={handleClose}
       title={createModalContext ? MODAL_TITLES[createModalContext] : undefined}
+      actions={expandBtn}
+      wide={wide}
     >
       {createModalContext === 'workspace' ? (
         <WorkspaceForm onClose={handleClose} />
       ) : createModalContext === 'project' ? (
         <ProjectForm onClose={handleClose} />
-      ) : createModalContext ? (
-        <TaskSubtaskForm context={createModalContext} onClose={handleClose} />
+      ) : createModalContext === 'task' || createModalContext === 'subtask' ? (
+        <TaskForm context={createModalContext} onCancel={handleClose} submitLabel="Crear tarea" />
       ) : null}
     </Modal>
   );

@@ -1,4 +1,3 @@
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -29,33 +28,45 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
-      FRONTEND_URL: http://localhost:3001
+      FRONTEND_URL: ${FRONTEND_URL}
       SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
-      - "3000:3000"
-    depends_on:
-      - postgres
+      - "${BACKEND_PORT:-}:3000"
     networks:
       - app_network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rxflow-api.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.rxflow-api.entrypoints=websecure"
+      - "traefik.http.routers.rxflow-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rxflow-api.loadbalancer.server.port=3000"
+      - "traefik.docker.network=traefik-public"
 
   frontend:
     build:
       context: ./frontend
-      args:
-        - NEXT_PUBLIC_API_URL=http://localhost:3000
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     pull_policy: build
     container_name: rxflow_frontend
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     ports:
-      - "3001:3001"
-    depends_on:
-      - backend
+      - "${FRONTEND_PORT:-}:3001"
     networks:
       - app_network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rxflow.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.rxflow.entrypoints=websecure"
+      - "traefik.http.routers.rxflow.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rxflow.loadbalancer.server.port=3001"
+      - "traefik.docker.network=traefik-public"
 
   cloudbeaver:
     image: dbeaver/cloudbeaver:latest
@@ -64,9 +75,17 @@ services:
     depends_on:
       - postgres
     ports:
-      - "8978:8978"
+      - "${CB_PORT:-}:8978"
     networks:
       - app_network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rxflow-db.rule=Host(`${DB_DOMAIN}`)"
+      - "traefik.http.routers.rxflow-db.entrypoints=websecure"
+      - "traefik.http.routers.rxflow-db.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rxflow-db.loadbalancer.server.port=8978"
+      - "traefik.docker.network=traefik-public"
 
 volumes:
   postgres_data:
@@ -74,3 +93,5 @@ volumes:
 networks:
   app_network:
     driver: bridge
+  traefik-public:
+    external: true

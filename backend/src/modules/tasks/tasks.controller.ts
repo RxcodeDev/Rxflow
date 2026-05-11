@@ -9,6 +9,7 @@ import type { SafeUser } from '../users/entities/user.entity';
 interface CreateTaskDto {
   projectCode: string;
   title: string;
+  description?: string | null;
   priority?: string;
   status?: string;
   assigneeIds?: string[];
@@ -110,6 +111,7 @@ export class TasksController {
     return this.svc.create({
       projectCode: dto.projectCode,
       title: dto.title,
+      description: dto.description ?? null,
       priority: dto.priority ?? 'media',
       status: dto.status ?? 'backlog',
       assigneeIds: dto.assigneeIds?.length ? dto.assigneeIds : dto.assigneeId ? [dto.assigneeId] : [],

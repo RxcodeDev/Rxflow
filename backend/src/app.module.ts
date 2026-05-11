@@ -12,6 +12,7 @@ import { SeedModule } from './modules/seed/seed.module';
 import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { LicensesModule } from './modules/licenses/licenses.module';
 import { WikiModule } from './modules/wiki/wiki.module';
+import { ExportModule } from './modules/export/export.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { WikiModule } from './modules/wiki/wiki.module';
     WorkspacesModule,
     LicensesModule,
     WikiModule,
+    ExportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

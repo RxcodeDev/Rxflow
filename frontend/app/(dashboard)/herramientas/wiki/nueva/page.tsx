@@ -72,6 +72,7 @@ export default function NuevaWikiPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [icon, setIcon] = useState<string>('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const allProjects = useMemo(
     () => dedupeByKey(
@@ -84,10 +85,7 @@ export default function NuevaWikiPage() {
   useEffect(() => {
     apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
       .then(r => {
-        if (r.ok && r.data.length > 0) {
-          setWorkspaces(r.data);
-          setWorkspaceId(r.data[0].id);
-        }
+        if (r.ok) setWorkspaces(r.data);
       })
       .catch(() => {});
   }, []);
@@ -161,178 +159,248 @@ export default function NuevaWikiPage() {
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="h-full flex flex-col overflow-hidden">
-      {/* ── Header bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--c-border)] shrink-0 bg-[var(--c-bg)]">
+  /* ── Shared config fields (used in both sidebar and bottom sheet) ── */
+  const configFields = (
+    <div className="space-y-5">
+      <Field label="Workspace" required>
+        <SearchSelect
+          options={workspaces.map(ws => ({ value: ws.id, label: ws.name }))}
+          value={workspaceId}
+          onChange={v => setWorkspaceId(v)}
+          placeholder="Selecciona workspace..."
+          noneLabel="— ninguno —"
+          searchPlaceholder="Buscar workspace..."
+        />
+      </Field>
+
+      <Field label="Icono">
+        <EmojiPicker value={icon} onChange={setIcon} />
+      </Field>
+
+      <Field label="Proceso padre">
+        <SearchSelect
+          options={parentPages.map(p => ({ value: p.id, label: p.title }))}
+          value={parentPageId}
+          onChange={v => setParentPageId(v)}
+          placeholder="— ninguno (raíz) —"
+          noneLabel="— ninguno (raíz) —"
+          searchPlaceholder="Buscar proceso padre..."
+          disabled={!workspaceId || parentPages.length === 0}
+        />
+      </Field>
+
+      <div className="border-t border-[var(--c-line)] pt-4">
         <button
           type="button"
-          onClick={() => router.back()}
-          className="p-1.5 rounded-lg text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors"
-          aria-label="Volver"
+          onClick={() => setRelationsOpen(o => !o)}
+          className="flex items-center justify-between w-full mb-3"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+          <span className={labelCls}>Vincular a</span>
+          <svg
+            viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
+            className={`transition-transform text-[var(--c-text-sub)] ${relationsOpen ? 'rotate-180' : ''}`}
+          >
+            <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
-        <span className="font-semibold text-[var(--c-text)] flex-1 truncate">Nuevo proceso</span>
-        {error && <p className="text-xs text-[var(--c-danger)] truncate max-w-xs">{error}</p>}
-        <button
-          type="submit"
-          disabled={saving || !title.trim() || !workspaceId}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[var(--c-text)] text-[var(--c-bg)] text-sm font-medium rounded-lg hover:opacity-80 disabled:opacity-40 transition-opacity shrink-0"
-        >
-          {saving ? 'Creando...' : 'Crear proceso'}
-        </button>
-      </div>
 
-      {/* ── Body ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {relationsOpen && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {LINK_TYPES.map(lt => (
+                <button
+                  key={lt.value}
+                  type="button"
+                  onClick={() => {
+                    const next: LinkType = linkType === lt.value ? '' : lt.value;
+                    setLinkType(next);
+                    if (next !== 'tarea') setTaskId('');
+                    if (next !== 'epica') setEpicId('');
+                    if (next !== 'proyecto') setProjectCode('');
+                  }}
+                  className={[
+                    'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border',
+                    linkType === lt.value
+                      ? 'bg-[var(--c-text)] text-[var(--c-bg)] border-[var(--c-text)]'
+                      : 'text-[var(--c-text-sub)] border-[var(--c-border)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]',
+                  ].join(' ')}
+                >
+                  {lt.icon}{lt.label}
+                </button>
+              ))}
+            </div>
 
-        {/* Left meta panel */}
-        <aside className="w-60 md:w-64 shrink-0 border-r border-[var(--c-border)] overflow-y-auto p-4 space-y-4 bg-[var(--c-bg)]">
-
-          <Field label="Workspace" required>
-            <SearchSelect
-              options={workspaces.map(ws => ({ value: ws.id, label: ws.name }))}
-              value={workspaceId}
-              onChange={v => setWorkspaceId(v)}
-              placeholder="Selecciona workspace..."
-              noneLabel="— ninguno —"
-              searchPlaceholder="Buscar workspace..."
-            />
-          </Field>
-
-          <Field label="Título" required>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Nombre del proceso"
-              required
-              autoFocus
-              className={baseCls}
-            />
-          </Field>
-
-          <Field label="Icono">
-            <EmojiPicker value={icon} onChange={setIcon} />
-          </Field>
-
-          <Field label="Proceso padre">
-            <SearchSelect
-              options={parentPages.map(p => ({ value: p.id, label: p.title }))}
-              value={parentPageId}
-              onChange={v => setParentPageId(v)}
-              placeholder="— ninguno (raíz) —"
-              noneLabel="— ninguno (raíz) —"
-              searchPlaceholder="Buscar proceso padre..."
-              disabled={!workspaceId || parentPages.length === 0}
-            />
-          </Field>
-
-          <hr className="border-[var(--c-border)]" />
-
-          {/* Relations — collapsible */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setRelationsOpen(o => !o)}
-              className="flex items-center justify-between w-full"
-            >
-              <span className={labelCls}>Vincular a</span>
-              <svg
-                viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
-                className={`transition-transform text-[var(--c-text-sub)] ${relationsOpen ? 'rotate-180' : ''}`}
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-
-            {relationsOpen && (
-              <div className="mt-3 space-y-3">
-                {/* Type picker pills */}
-                <div className="flex flex-wrap gap-1.5">
-                  {LINK_TYPES.map(lt => (
-                    <button
-                      key={lt.value}
-                      type="button"
-                      onClick={() => {
-                        const next: LinkType = linkType === lt.value ? '' : lt.value;
-                        setLinkType(next);
-                        if (next !== 'tarea') setTaskId('');
-                        if (next !== 'epica') setEpicId('');
-                        if (next !== 'proyecto') setProjectCode('');
-                      }}
-                      className={[
-                        'flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors border',
-                        linkType === lt.value
-                          ? 'bg-[var(--c-text)] text-[var(--c-bg)] border-[var(--c-text)]'
-                          : 'text-[var(--c-text-sub)] border-[var(--c-border)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]',
-                      ].join(' ')}
-                    >
-                      {lt.icon}
-                      {lt.label}
-                    </button>
-                  ))}
-                </div>
-
-                {linkType === 'tarea' && (
-                  <Field label="Tarea">
-                    <TaskSearchSelect
-                      tasks={allTasks}
-                      value={taskId}
-                      onChange={(tId, task) => {
-                        setTaskId(tId);
-                        if (task) setProjectCode(task.projectCode);
-                      }}
-                      loading={tasksLoading}
-                    />
-                  </Field>
-                )}
-
-                {linkType === 'epica' && (
-                  <Field label="Épica">
-                    <SearchSelect
-                      options={allEpics.map(e => ({ value: e.id, label: e.name, subLabel: e.projectName, colorKey: e.projectCode }))}
-                      value={epicId}
-                      onChange={v => setEpicId(v)}
-                      loading={epicsLoading}
-                      noneLabel="— ninguna —"
-                      searchPlaceholder="Buscar épica..."
-                    />
-                  </Field>
-                )}
-
-                {linkType === 'proyecto' && (
-                  <Field label="Proyecto">
-                    <SearchSelect
-                      options={allProjects.map(p => ({ value: p.code, label: p.name }))}
-                      value={projectCode}
-                      onChange={v => setProjectCode(v)}
-                      noneLabel="— ninguno —"
-                      searchPlaceholder="Buscar proyecto..."
-                    />
-                  </Field>
-                )}
-              </div>
+            {linkType === 'tarea' && (
+              <Field label="Tarea">
+                <TaskSearchSelect
+                  tasks={allTasks}
+                  value={taskId}
+                  onChange={(tId, task) => { setTaskId(tId); if (task) setProjectCode(task.projectCode); }}
+                  loading={tasksLoading}
+                />
+              </Field>
+            )}
+            {linkType === 'epica' && (
+              <Field label="Épica">
+                <SearchSelect
+                  options={allEpics.map(e => ({ value: e.id, label: e.name, subLabel: e.projectName, colorKey: e.projectCode }))}
+                  value={epicId}
+                  onChange={v => setEpicId(v)}
+                  loading={epicsLoading}
+                  noneLabel="— ninguna —"
+                  searchPlaceholder="Buscar épica..."
+                />
+              </Field>
+            )}
+            {linkType === 'proyecto' && (
+              <Field label="Proyecto">
+                <SearchSelect
+                  options={allProjects.map(p => ({ value: p.code, label: p.name }))}
+                  value={projectCode}
+                  onChange={v => setProjectCode(v)}
+                  noneLabel="— ninguno —"
+                  searchPlaceholder="Buscar proyecto..."
+                />
+              </Field>
             )}
           </div>
-        </aside>
+        )}
+      </div>
+    </div>
+  );
 
-        {/* Right: rich text editor with toolbar */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden p-3">
-          <WikiEditor
-            content={content}
-            onChange={setContent}
-            placeholder="Describe el proceso aquí..."
-            title={title || undefined}
-            icon={icon || undefined}
-          />
+  return (
+    <>
+      <form id="wiki-form" onSubmit={handleSubmit} className="h-full flex flex-col overflow-hidden bg-[var(--c-bg)]">
+
+        {/* ── Header ───────────────────────────────────────────────────── */}
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-[var(--c-border)] bg-[var(--c-bg)]">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] transition-colors"
+            aria-label="Volver"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-[var(--c-text)] text-[15px] leading-none truncate">Nuevo proceso</p>
+            <p className="text-[11px] text-[var(--c-muted)] mt-0.5 truncate">
+              {workspaces.find(ws => ws.id === workspaceId)?.name ?? 'Sin workspace'}
+            </p>
+          </div>
+
+          {error && <p className="hidden md:block max-w-[160px] truncate text-xs text-[var(--c-danger)]">{error}</p>}
+
+          {/* Mobile: Crear opens config modal */}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            disabled={!title.trim()}
+            className="md:hidden shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-[var(--c-text)] text-[var(--c-bg)] text-[13px] font-semibold rounded-xl hover:opacity-80 disabled:opacity-40 transition-opacity"
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2.5" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Crear
+          </button>
+
+          {/* Desktop: direct submit */}
+          <button
+            type="submit"
+            disabled={saving || !title.trim() || !workspaceId}
+            className="hidden md:flex shrink-0 items-center gap-1.5 px-3.5 py-2 bg-[var(--c-text)] text-[var(--c-bg)] text-[13px] font-semibold rounded-xl hover:opacity-80 disabled:opacity-40 transition-opacity"
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2.5" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            {saving ? 'Creando...' : 'Crear proceso'}
+          </button>
         </div>
 
-      </div>
-    </form>
+        {/* ── Body ───────────────────────────────────────────────────────── */}
+        <div className="flex min-h-0 flex-1 overflow-hidden md:flex-row">
+
+          {/* Editor — full width on mobile, right column on desktop */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:order-2 md:p-3">
+            <WikiEditor
+              content={content}
+              onChange={setContent}
+              onTitleChange={setTitle}
+              placeholder="Describe el proceso aquí..."
+              title={title || undefined}
+              icon={icon || undefined}
+            />
+          </div>
+
+          {/* Sidebar — desktop only */}
+          <aside className="hidden md:flex md:order-1 md:w-64 md:shrink-0 md:flex-col md:overflow-y-auto md:border-r md:border-[var(--c-border)] md:p-4">
+            {configFields}
+          </aside>
+        </div>
+
+      </form>
+
+      {/* ── Mobile config modal ─────────────────────────────────────────── */}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex items-center justify-center p-5">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-[3px]"
+            onClick={() => setSettingsOpen(false)}
+          />
+          {/* Dialog */}
+          <div className="relative w-full max-w-sm flex flex-col rounded-3xl bg-[var(--c-bg)] shadow-[0_24px_64px_rgba(0,0,0,0.22)]" style={{ maxHeight: '80dvh' }}>
+            {/* Header */}
+            <div className="shrink-0 flex items-center justify-between px-5 pt-5 pb-4 border-b border-[var(--c-border)]">
+              <div>
+                <p className="font-bold text-[var(--c-text)] text-[16px] leading-none">Configuración</p>
+                <p className="text-[12px] text-[var(--c-muted)] mt-1">Workspace, icono y vínculos</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--c-hover)] text-[var(--c-text-sub)] hover:bg-[var(--c-line)] transition-colors"
+                aria-label="Cerrar"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2.5" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            {/* Scrollable body */}
+            <div className="overflow-y-auto px-5 py-5 flex-1 min-h-0">
+              {error && <p className="mb-4 text-xs text-[var(--c-danger)] bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+              {configFields}
+            </div>
+            {/* Footer */}
+            <div className="shrink-0 px-5 py-4 border-t border-[var(--c-border)] flex flex-col gap-2">
+              <button
+                type="submit"
+                form="wiki-form"
+                disabled={saving || !title.trim() || !workspaceId}
+                className="w-full py-2.5 bg-[var(--c-text)] text-[var(--c-bg)] font-semibold rounded-xl text-[14px] hover:opacity-80 disabled:opacity-40 transition-opacity flex items-center justify-center gap-2"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2.5" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {saving ? 'Guardando...' : 'Guardar y publicar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                className="w-full py-2 text-[var(--c-text-sub)] text-[13px] hover:text-[var(--c-text)] transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -338,12 +338,13 @@ export function PriorityPill({ value, onChange, disabled = false }: { value: str
 
 /* ── AssigneesPill (multi) ──────────────────────────── */
 export function AssigneesPill({
-  assignees, users, onChange, disabled = false,
+  assignees, users, onChange, disabled = false, btnClassName,
 }: {
   assignees: { id: string; name: string; initials: string; avatar_color?: string | null; avatar_url?: string | null }[];
   users: UserOpt[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
+  btnClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos]   = useState({ top: 0, right: 0, minWidth: 0 });
@@ -384,7 +385,7 @@ export function AssigneesPill({
 
   return (
     <>
-      <button ref={btnRef} type="button" onClick={handleOpen} className={`${s.propPill} ${disabled ? s.propPillStatic : ''}`} disabled={disabled}>
+      <button ref={btnRef} type="button" onClick={handleOpen} className={btnClassName ?? `${s.propPill} ${disabled ? s.propPillStatic : ''}`} disabled={disabled}>
         {assignees.length === 0 ? (
           <span className={s.propDot} style={{ background: 'var(--c-border)' }} aria-hidden="true" />
         ) : assignees.length === 1 ? (
@@ -909,7 +910,7 @@ export default function TaskDrawer() {
                           <button type="button" className={s.dateNavBtn} onClick={() => setDateView((current) => addMonths(current, -1))} aria-label="Mes anterior">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
                           </button>
-                          <span className={s.datePopoverTitle}>{CALENDAR_MONTH.format(dateView)}</span>
+                          <span className={s.datePopoverTitle}>{CALENDAR_MONTH.format(dateView).replace(/^\w/, c => c.toUpperCase())}</span>
                           <button type="button" className={s.dateNavBtn} onClick={() => setDateView((current) => addMonths(current, 1))} aria-label="Mes siguiente">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
                           </button>
