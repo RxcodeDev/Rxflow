@@ -42,12 +42,24 @@ export class TasksService {
     return this.repo.updateAndLog(id, userId, dto);
   }
 
+  remove(id: string, userId: string) {
+    return this.repo.remove(id, userId);
+  }
+
   getById(id: string) {
     return this.repo.findById(id);
   }
 
   createComment(taskId: string, authorId: string, body: string) {
     return this.repo.createComment(taskId, authorId, body);
+  }
+
+  deleteComment(commentId: string, authorId: string) {
+    return this.repo.deleteComment(commentId, authorId);
+  }
+
+  updateComment(commentId: string, authorId: string, body: string) {
+    return this.repo.updateComment(commentId, authorId, body);
   }
 
   logActivity(taskId: string, userId: string, action: string) {

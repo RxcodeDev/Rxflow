@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, Patch, Post, Query, UseGuards,
+  Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -60,6 +60,11 @@ export class TasksController {
     return this.svc.update(id, user.id, dto);
   }
 
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: SafeUser) {
+    return this.svc.remove(id, user.id);
+  }
+
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.svc.getById(id);
@@ -72,6 +77,23 @@ export class TasksController {
     @CurrentUser() user: SafeUser,
   ) {
     return this.svc.createComment(id, user.id, body);
+  }
+
+  @Delete(':id/comments/:commentId')
+  deleteComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: SafeUser,
+  ) {
+    return this.svc.deleteComment(commentId, user.id);
+  }
+
+  @Patch(':id/comments/:commentId')
+  updateComment(
+    @Param('commentId') commentId: string,
+    @Body('body') body: string,
+    @CurrentUser() user: SafeUser,
+  ) {
+    return this.svc.updateComment(commentId, user.id, body);
   }
 
   @Post(':id/activity')

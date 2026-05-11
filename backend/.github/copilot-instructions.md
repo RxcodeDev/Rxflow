@@ -40,9 +40,9 @@ src/
 
   modules/
     auth/                      ← register, login, /me
-    users/                     ← GET /users
+    users/                     ← GET /users, GET /users/:id
     projects/                  ← GET /projects, GET /projects/:code, GET/POST/PATCH/DELETE /projects/:code/epics
-    tasks/                     ← GET/POST/PATCH /tasks, /tasks/mine, /tasks/:id
+    tasks/                     ← GET/POST/PATCH/DELETE /tasks, /tasks/mine, /tasks/:id
     cycles/                    ← GET /cycles, GET /cycles/:id
     notifications/             ← GET /notifications, PATCH mark-read
     seed/                      ← POST /seed, GET /seed/status
@@ -201,6 +201,7 @@ GET  /tasks/:id
 POST /tasks                  { projectCode, title, priority, status, assigneeId?,
                                epicId?, cycleId?, parentTaskId?, dueDate? }
 PATCH /tasks/:id             { any task fields }
+DELETE /tasks/:id            ← elimina la tarea y sus subtareas vía cascade en BD
 POST /tasks/:id/comments     { content }
 POST /tasks/:id/activity     { action, detail }
 
@@ -213,6 +214,7 @@ PATCH /notifications/:id/read
 PATCH /notifications/read-all
 
 GET  /users
+GET  /users/:id
 
 GET  /workspaces
 GET  /workspaces/unassigned-projects
@@ -253,6 +255,8 @@ interface User {
   is_active: boolean; created_at: Date; updated_at: Date;
 }
 type SafeUser = Omit<User, 'password_hash'>;
+
+// users.avatar_url is stored as TEXT to support data URLs/base64 avatars.
 
 // Task (DB row)
 interface Task {

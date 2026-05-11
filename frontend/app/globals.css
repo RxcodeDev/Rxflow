@@ -25,6 +25,7 @@
   --c-line:       #efefef;
   --c-danger:     #c0392b;
   --c-active-pill:#f0f0f0;
+  --c-accent:      #2563eb;
 
   /* Sidebar */
   --sidebar-w:           min(13.75rem, calc(100vw - 2rem));
@@ -64,6 +65,7 @@
   --c-line:       #222;
   --c-danger:     #e05252;
   --c-active-pill:#222;
+  --c-accent:      #60a5fa;
   --c-tooltip-bg: #e0e0e0;
   --c-avatar-bg:  #2a2a2a;
   --c-avatar-fg:  #666;
@@ -234,3 +236,212 @@ body {
 
 /* Ensure inline code does not inherit pre background */
 :not(pre) > code { background: var(--c-hover) !important; color: var(--c-text) !important; }
+
+/* ── Comment editor (TaskDrawer rich input) ─────────── */
+.comment-editor-wrap {
+  border: 1px solid var(--c-border);
+  border-radius: 0.625rem;
+  background: var(--c-bg);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.comment-editor-wrap:focus-within {
+  border-color: var(--c-text-sub);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
+}
+
+.comment-editor-field {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  min-height: 5rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.comment-editor-bottom {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.comment-editor-cancel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--c-text-sub);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.comment-editor-cancel:hover { background: var(--c-hover); color: var(--c-text); }
+
+/* The ProseMirror editable area for comments */
+.comment-editor-prose {
+  outline: none;
+  caret-color: var(--c-text);
+  color: var(--c-text);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.comment-editor-prose p               { color: var(--c-text); line-height: 1.55; margin-bottom: 0.3rem; }
+.comment-editor-prose h1               { font-size: 1.1rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 0.3rem; }
+.comment-editor-prose h2               { font-size: 1rem;   font-weight: 700; margin-top: 0.5rem; margin-bottom: 0.3rem; }
+.comment-editor-prose h3               { font-size: 0.9rem; font-weight: 600; margin-top: 0.4rem; margin-bottom: 0.3rem; }
+.comment-editor-prose ul               { list-style-type: disc;    margin-left: 1.25rem; margin-bottom: 0.3rem; }
+.comment-editor-prose ol               { list-style-type: decimal; margin-left: 1.25rem; margin-bottom: 0.3rem; }
+.comment-editor-prose li               { margin-bottom: 0.1rem; line-height: 1.5; }
+.comment-editor-prose strong           { font-weight: 600; }
+.comment-editor-prose em               { font-style: italic; }
+.comment-editor-prose code:not(pre > code) {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8em;
+  background: var(--c-hover);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+}
+.comment-editor-prose pre {
+  background: var(--c-hover);
+  color: var(--c-text);
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.4rem;
+  margin-bottom: 0.3rem;
+  overflow-x: auto;
+}
+.comment-editor-prose pre code        { background: transparent; padding: 0; font-size: 0.8em; color: inherit; }
+.comment-editor-prose blockquote      { border-left: 3px solid var(--c-border); padding-left: 0.75rem; margin: 0.3rem 0; color: var(--c-text-sub); }
+.comment-editor-prose a               { color: var(--c-text); text-decoration: underline; text-underline-offset: 2px; }
+.comment-editor-prose hr              { border: none; border-top: 1px solid var(--c-border); margin: 0.6rem 0; }
+.comment-editor-prose img             { max-width: 100%; height: auto; border-radius: 0.4rem; margin: 0.2rem; border: 1px solid var(--c-border); display: inline-block; vertical-align: bottom; cursor: grab; }
+
+/* Placeholder */
+.comment-editor-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--c-muted);
+  pointer-events: none;
+  height: 0;
+  font-size: 0.8125rem;
+}
+
+/* (toolbar merged into wrap row) */
+
+.comment-editor-img-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  border-radius: 0.3rem;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.comment-editor-img-btn:hover { background: var(--c-border); color: var(--c-text); }
+
+.comment-editor-submit {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: #16a34a;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.875rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+  flex-shrink: 0;
+}
+.comment-editor-submit:hover:not(:disabled) { opacity: 0.82; }
+.comment-editor-submit:disabled { opacity: 0.4; cursor: default; }
+
+/* Viewer: comment Tiptap content reads same as comment-editor-prose */
+.commentTiptap .comment-editor-prose,
+.commentTiptap .wiki-prose {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  min-height: unset;
+}
+
+/* ── Description Editor (task drawer) ────────────────── */
+.desc-editor-wrap {
+  border-radius: 0.5rem;
+  background: transparent;
+  width: 100%;
+  cursor: text;
+}
+.desc-editor-wrap:hover {
+}
+.desc-editor-focused {
+  background: var(--c-bg) !important;
+  outline: 1px solid var(--c-border);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.05);
+}
+
+.desc-editor-field {
+  padding: 0.375rem 0.5rem;
+}
+
+.desc-editor-prose {
+  outline: none;
+  caret-color: var(--c-text);
+  color: var(--c-text-sub);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  font-family: inherit;
+  min-height: 2.5rem;
+}
+
+.desc-editor-prose p               { color: var(--c-text-sub); line-height: 1.65; margin-bottom: 0.25rem; }
+.desc-editor-prose h1               { font-size: 1.15rem; font-weight: 700; color: var(--c-text); margin-top: 0.5rem; margin-bottom: 0.25rem; }
+.desc-editor-prose h2               { font-size: 1.05rem; font-weight: 700; color: var(--c-text); margin-top: 0.5rem; margin-bottom: 0.25rem; }
+.desc-editor-prose h3               { font-size: 0.95rem; font-weight: 600; color: var(--c-text); margin-top: 0.4rem; margin-bottom: 0.25rem; }
+.desc-editor-prose ul               { list-style-type: disc;    margin-left: 1.25rem; margin-bottom: 0.25rem; }
+.desc-editor-prose ol               { list-style-type: decimal; margin-left: 1.25rem; margin-bottom: 0.25rem; }
+.desc-editor-prose li               { margin-bottom: 0.1rem; line-height: 1.6; }
+.desc-editor-prose strong           { font-weight: 600; color: var(--c-text); }
+.desc-editor-prose em               { font-style: italic; }
+.desc-editor-prose code:not(pre > code) {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8em;
+  background: var(--c-hover);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+}
+.desc-editor-prose pre {
+  background: var(--c-hover);
+  color: var(--c-text);
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.4rem;
+  margin-bottom: 0.25rem;
+  overflow-x: auto;
+}
+.desc-editor-prose pre code        { background: transparent; padding: 0; font-size: 0.8em; color: inherit; }
+.desc-editor-prose blockquote      { border-left: 3px solid var(--c-border); padding-left: 0.75rem; margin: 0.25rem 0; color: var(--c-text-sub); }
+.desc-editor-prose a               { color: var(--c-text); text-decoration: underline; text-underline-offset: 2px; }
+.desc-editor-prose hr              { border: none; border-top: 1px solid var(--c-border); margin: 0.5rem 0; }
+.desc-editor-prose img             { max-width: 100%; height: auto; border-radius: 0.4rem; margin: 0.25rem 0; border: 1px solid var(--c-border); display: block; cursor: grab; }
+
+/* Placeholder */
+.desc-editor-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--c-muted);
+  pointer-events: none;
+  height: 0;
+  font-size: 0.875rem;
+}

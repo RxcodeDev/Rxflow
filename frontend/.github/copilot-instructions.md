@@ -44,7 +44,7 @@ components/
     auth/                    ← LoginForm, RegisterForm
     tasks/
       CreateTaskModal.tsx    ← Global modal — NEVER mount in individual pages
-      TaskDrawer.tsx         ← Global drawer — NEVER mount in individual pages
+      TaskDrawer.tsx         ← Global drawer — NEVER mount in individual pages; header + properties fixed, center content scroll, comment composer fixed abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
     projects/                ← Project-related feature components
     users/                   ← UserTable, UserForm
 

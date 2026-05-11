@@ -54,7 +54,7 @@ model User {
   password_hash   String    @db.VarChar(255)
   role            String    @default("member") @db.VarChar(50)
   initials        String    @db.VarChar(4)
-  avatar_url      String?   @db.VarChar(500)
+  avatar_url      String?   @db.Text
   avatar_color    String?   @db.VarChar(20)
   presence_status String    @default("offline")
   last_seen_at    DateTime? @db.Timestamptz

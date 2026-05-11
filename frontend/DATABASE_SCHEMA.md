@@ -16,7 +16,7 @@ Documento generado a partir del frontend actual. Refleja **todos los campos, tip
 | `password_hash` | varchar | auth |
 | `role` | varchar(50) | 'Tech Lead', 'Backend Dev', 'Frontend Dev', 'Full Stack Dev'… |
 | `initials` | varchar(4) | calculado o manual, ej. 'AN' |
-| `avatar_url` | varchar NULLABLE | |
+| `avatar_url` | text NULLABLE | permite URL remota o data URL/base64 del avatar |
 | `last_seen_at` | timestamptz NULLABLE | para indicador online/away/offline |
 | `presence_status` | enum('online','away','offline') | derivable de `last_seen_at` |
 | `created_at` | timestamptz DEFAULT now() | |

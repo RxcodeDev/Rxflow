@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import type { TaskItem } from './entities/task.entity';
 import { NotificationsRepository } from '../notifications/notifications.repository';
+import type { TaskItem } from './entities/task.entity';
 
 // ── Include shape reused across all list queries ──────────────────────────────
 const TASK_LIST_INCLUDE = {
@@ -249,6 +249,21 @@ export class TasksRepository {
     }
   }
 
+  async remove(id: string, _userId: string): Promise<{ id: string; deleted: true }> {
+    const existing = await this.prisma.task.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Tarea no encontrada');
+    }
+
+    await this.prisma.task.delete({ where: { id } });
+
+    return { id, deleted: true };
+  }
+
   async createComment(taskId: string, authorId: string, body: string) {
     const [comment] = await this.prisma.$transaction([
       this.prisma.comment.create({
@@ -286,6 +301,17 @@ export class TasksRepository {
 
   async logActivity(taskId: string, userId: string, action: string) {
     await this.prisma.activityLog.create({ data: { task_id: taskId, user_id: userId, action } });
+  }
+
+  async deleteComment(commentId: string, authorId: string) {
+    await this.prisma.comment.deleteMany({ where: { id: commentId, author_id: authorId } });
+  }
+
+  async updateComment(commentId: string, authorId: string, body: string) {
+    return this.prisma.comment.updateMany({
+      where: { id: commentId, author_id: authorId },
+      data:  { body },
+    });
   }
 
   async findById(id: string) {
@@ -348,6 +374,7 @@ export class TasksRepository {
         id:           c.id,
         body:         c.body,
         created_at:   c.created_at,
+        author_id:    c.author_id,
         initials:     c.author.initials,
         name:         c.author.name,
         avatar_url:   c.author.avatar_url,

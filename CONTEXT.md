@@ -81,7 +81,7 @@ components/layouts/Sidebar.tsx    ← Sidebar desktop ('use client')
 components/layouts/Navbar.tsx     ← Bottom nav mobile ('use client')
 components/features/tasks/
   CreateTaskModal.tsx             ← Modal global — NO montar en páginas individuales
-  TaskDrawer.tsx                  ← Drawer global — NO montar en páginas individuales
+  TaskDrawer.tsx                  ← Drawer global — NO montar en páginas individuales; cabecera + propiedades fijas, scroll solo en contenido central, composer de comentarios fijo abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
 components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal
 
 store/UIContext.tsx                ← UIProvider, useUIState(), useUIDispatch()
@@ -107,7 +107,7 @@ Notas Wiki:
 main.ts                           ← CORS, ValidationPipe global, HttpExceptionFilter, TransformInterceptor
 app.module.ts                     ← Importa todos los módulos
 modules/auth/                     ← POST /auth/register, /auth/login, GET /auth/me
-modules/users/                    ← GET /users
+modules/users/                    ← GET /users, GET /users/:id
 modules/projects/                 ← GET /projects, /projects/:code, /projects/:code/tasks, /projects/:code/epics
 modules/tasks/                    ← GET/POST/PATCH /tasks, /tasks/mine, /tasks/:id
 modules/cycles/                   ← GET /cycles, /cycles/:id
@@ -124,6 +124,8 @@ config/database.config.ts         ← getPool() singleton (raw pg, sin ORM)
 ```
 
 > **Nota arquitectura:** la mayoría de módulos usa raw `pg` via `getPool()`. Solo el módulo `licenses` usa Prisma (PrismaService). No mezclar: si extiendes un módulo existente, mantén su patrón de acceso a DB.
+
+> **Nota avatar:** `users.avatar_url` debe soportar data URLs/base64 de la UI de perfil; el campo en BD no debe limitarse a `varchar(500)`.
 
 ---
 
@@ -173,6 +175,7 @@ GET  /tasks?projectCode=&status=&cycleId=  → TaskItem[]
 GET  /tasks/:id           → TaskDetail
 POST /tasks               { projectCode, title, priority, status, assigneeId?, epicId?, cycleId?, dueDate? }
 PATCH /tasks/:id          { ...campos }
+DELETE /tasks/:id         → elimina la tarea y sus subtareas vía cascade en BD
 POST /tasks/:id/comments  { content }
 
 GET  /cycles              → CycleSummary[]
@@ -184,6 +187,7 @@ PATCH /notifications/:id/read
 PATCH /notifications/read-all
 
 GET  /users               → MemberItem[]
+GET  /users/:id           → MemberItem
 
 GET  /workspaces          → WorkspaceSummary[]
 GET  /workspaces/unassigned-projects → ProjectSummary[]
@@ -267,3 +271,15 @@ juan@rxflow.io / audit1234
 7. **SQL parametrizado** en backend — nunca interpolación de strings
 8. **Iconos** = Feather, SVG inline, `viewBox="0 0 24 24"`, stroke-based, `aria-hidden="true"`
 9. **⛔ NUNCA `<select>` nativo** — siempre custom dropdown con búsqueda, íconos por opción y tooltip en hover. Referencia: `components/features/wiki/TaskSearchSelect.tsx`
+10. **Patrón 100dvh (sin scroll general)** — Páginas que deben llenar la pantalla sin scroll del `<main>` padre usan:
+    ```tsx
+    // Negates layout's p-6, fills full viewport height
+    <div className="-m-6 flex flex-col bg-[var(--c-bg)]" style={{ height: '100dvh' }}>
+      <div className="flex-shrink-0 ...">Header</div>
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        <div className="flex-1 overflow-y-auto ...">Left / main content</div>
+        <aside className="hidden md:flex ... overflow-y-auto border-l ...">Right panel</aside>
+      </div>
+    </div>
+    ```
+    El `main` del layout tiene `p-6`; el `-m-6` lo cancela. En mobile añadir `pb-[calc(var(--nav-h)+2rem)]` a la columna scrollable para no quedar tapado por el nav.

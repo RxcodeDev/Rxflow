@@ -19,6 +19,11 @@ export class UsersController {
     return this.svc.findAll();
   }
 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.svc.findById(id);
+  }
+
   @Post()
   invite(@Body() body: { name: string; email: string; password: string }) {
     return this.svc.invite(body);

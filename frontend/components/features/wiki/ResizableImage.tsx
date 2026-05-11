@@ -51,6 +51,8 @@ function ResizableImageView({ node, updateAttributes, selected, editor }: NodeVi
   const setHalfW    = () => { const w = proseMirrorWidth(); if (w > 0) updateAttributes({ width: Math.floor(w / 2) }); };
   const setFullW    = () => { const w = proseMirrorWidth(); if (w > 0) updateAttributes({ width: w }); };
 
+  const isEditable = editor?.isEditable ?? true;
+
   /* ── render ───────────────────────────────────────────────────────────── */
   return (
     <NodeViewWrapper
@@ -64,8 +66,8 @@ function ResizableImageView({ node, updateAttributes, selected, editor }: NodeVi
         lineHeight: 0,
       }}
     >
-      {/* Floating toolbar above image */}
-      {selected && !resizing && (
+      {/* Floating toolbar above image — only in edit mode */}
+      {selected && !resizing && isEditable && (
         <span
           style={{
             position: 'absolute',
@@ -124,14 +126,14 @@ function ResizableImageView({ node, updateAttributes, selected, editor }: NodeVi
             maxWidth: '100%',
             height: 'auto',
             borderRadius: '0.5rem',
-            border: selected ? '2px solid #6366f1' : '1px solid var(--c-border)',
-            boxShadow: selected ? '0 0 0 4px rgba(99,102,241,0.15)' : 'none',
+            border: selected && isEditable ? '2px solid #6366f1' : '1px solid var(--c-border)',
+            boxShadow: selected && isEditable ? '0 0 0 4px rgba(99,102,241,0.15)' : 'none',
             transition: resizing ? 'none' : 'border-color 0.15s, box-shadow 0.15s',
           }}
         />
 
-        {/* Right edge handle — sits ON the image border, fully visible */}
-        {selected && (
+        {/* Right edge handle — only in edit mode */}
+        {selected && isEditable && (
           <span
             onMouseDown={startResize}
             title="Arrastrar para redimensionar"
