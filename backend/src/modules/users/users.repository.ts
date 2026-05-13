@@ -3,7 +3,7 @@ import { getPool } from '../../config/database.config';
 import type { User, SafeUser } from './entities/user.entity';
 
 const SAFE_COLS = `
-  id, name, email, role, initials, avatar_url, avatar_color,
+  id, name, email, role, user_type, role_type, initials, avatar_url, avatar_color,
   presence_status, last_seen_at, is_active, created_at, updated_at
 `;
 
@@ -13,6 +13,8 @@ export interface CreateUserData {
   password_hash: string;
   initials: string;
   role?: string;
+  user_type?: string;
+  role_type?: string | null;
 }
 
 @Injectable()
@@ -39,10 +41,18 @@ export class UsersRepository {
 
   async create(data: CreateUserData): Promise<SafeUser> {
     const { rows } = await this.pool.query<SafeUser>(
-      `INSERT INTO users (name, email, password_hash, initials, role)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (name, email, password_hash, initials, role, user_type, role_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING ${SAFE_COLS}`,
-      [data.name, data.email, data.password_hash, data.initials, data.role ?? 'member'],
+      [
+        data.name,
+        data.email,
+        data.password_hash,
+        data.initials,
+        data.role ?? 'member',
+        data.user_type ?? 'member',
+        data.role_type ?? null,
+      ],
     );
     return rows[0];
   }
@@ -71,13 +81,24 @@ export class UsersRepository {
     );
   }
 
-  async update(id: string, data: { name?: string; email?: string; role?: string; initials?: string; avatar_url?: string | null; avatar_color?: string | null }): Promise<SafeUser | null> {
+  async update(id: string, data: {
+    name?: string;
+    email?: string;
+    role?: string;
+    user_type?: string;
+    role_type?: string | null;
+    initials?: string;
+    avatar_url?: string | null;
+    avatar_color?: string | null;
+  }): Promise<SafeUser | null> {
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
     if (data.name         !== undefined) { fields.push(`name = $${idx++}`);         values.push(data.name); }
     if (data.email        !== undefined) { fields.push(`email = $${idx++}`);        values.push(data.email); }
     if (data.role         !== undefined) { fields.push(`role = $${idx++}`);         values.push(data.role); }
+    if (data.user_type    !== undefined) { fields.push(`user_type = $${idx++}`);    values.push(data.user_type); }
+    if ('role_type' in data)             { fields.push(`role_type = $${idx++}`);    values.push(data.role_type ?? null); }
     if (data.initials     !== undefined) { fields.push(`initials = $${idx++}`);     values.push(data.initials); }
     if (data.avatar_url   !== undefined) { fields.push(`avatar_url = $${idx++}`);   values.push(data.avatar_url); }
     if (data.avatar_color !== undefined) { fields.push(`avatar_color = $${idx++}`); values.push(data.avatar_color); }

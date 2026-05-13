@@ -146,7 +146,15 @@ export class LicensesService {
    */
   async findWorkspacesForUser(userId: string) {
     const ownedLicenseIds = await this.prisma.license
-      .findMany({ where: { owner_id: userId }, select: { id: true } })
+      .findMany({
+        where: {
+          OR: [
+            { owner_id: userId },
+            { members: { some: { user_id: userId, role: 'owner' } } },
+          ],
+        },
+        select: { id: true },
+      })
       .then((ls) => ls.map((l) => l.id));
 
     return this.prisma.workspace.findMany({
@@ -175,7 +183,15 @@ export class LicensesService {
 
     const isOwner = workspace?.license_id
       ? await this.prisma.license
-          .count({ where: { id: workspace.license_id, owner_id: userId } })
+          .count({
+            where: {
+              id: workspace.license_id,
+              OR: [
+                { owner_id: userId },
+                { members: { some: { user_id: userId, role: 'owner' } } },
+              ],
+            },
+          })
           .then((n) => n > 0)
       : false;
 
@@ -194,7 +210,13 @@ export class LicensesService {
 
   async isLicenseOwner(licenseId: string, userId: string): Promise<boolean> {
     const count = await this.prisma.license.count({
-      where: { id: licenseId, owner_id: userId },
+      where: {
+        id: licenseId,
+        OR: [
+          { owner_id: userId },
+          { members: { some: { user_id: userId, role: 'owner' } } },
+        ],
+      },
     });
     return count > 0;
   }

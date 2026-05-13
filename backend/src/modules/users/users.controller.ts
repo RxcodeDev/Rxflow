@@ -25,13 +25,30 @@ export class UsersController {
   }
 
   @Post()
-  invite(@Body() body: { name: string; email: string; password: string }) {
+  invite(@Body() body: {
+    name: string;
+    email: string;
+    password: string;
+    role?: string;
+    userType?: string;
+    roleType?: string;
+    user_type?: string;
+    role_type?: string;
+  }) {
     return this.svc.invite(body);
   }
 
   @Post('invite')
   sendInvite(
-    @Body() body: { name: string; email: string; role?: string },
+    @Body() body: {
+      name?: string;
+      email: string;
+      role?: string;
+      userType?: string;
+      roleType?: string;
+      user_type?: string;
+      role_type?: string;
+    },
     @CurrentUser() user: SafeUser,
   ) {
     return this.svc.sendInvite(body, user?.name);
@@ -55,7 +72,17 @@ export class UsersController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; email?: string; role?: string; avatar_url?: string | null; avatar_color?: string | null },
+    @Body() body: {
+      name?: string;
+      email?: string;
+      role?: string;
+      userType?: string;
+      roleType?: string;
+      user_type?: string;
+      role_type?: string;
+      avatar_url?: string | null;
+      avatar_color?: string | null;
+    },
   ) {
     return this.svc.update(id, body);
   }

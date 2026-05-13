@@ -39,7 +39,13 @@ export class WorkspaceAccessGuard implements CanActivate {
     // License owner has unconditional access
     if (workspace.license_id) {
       const isOwner = await this.prisma.license.count({
-        where: { id: workspace.license_id, owner_id: user.id },
+        where: {
+          id: workspace.license_id,
+          OR: [
+            { owner_id: user.id },
+            { members: { some: { user_id: user.id, role: 'owner' } } },
+          ],
+        },
       });
       if (isOwner > 0) return true;
     }

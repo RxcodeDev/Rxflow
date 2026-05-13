@@ -36,6 +36,10 @@ cd frontend && npm run dev
 - **Frontend** → `frontend/.github/copilot-instructions.md`
 - **Backend** → `backend/.github/copilot-instructions.md`
 
+## Scripts operativos
+
+- `scripts/sql/restructure_accounts_and_users.sql` → Reasigna ownership por reglas de negocio (Michelle/Daniel => rxcode, soporte/REC => SOPORTE), consolida workspaces duplicados por nombre, conserva workspaces existentes y repara wiki huérfana.
+
 ---
 
 ## Mapa de archivos clave
@@ -56,7 +60,7 @@ app/(dashboard)/proyectos/[id]/epicas/page.tsx  ← Épicas
 app/(dashboard)/proyectos/[id]/cycles/page.tsx  ← Cycles de proyecto
 app/(dashboard)/proyectos/[id]/tareas/[taskId]/page.tsx ← Detalle de tarea
 app/(dashboard)/cycles/page.tsx                 ← Cycles globales
-app/(dashboard)/miembros/page.tsx               ← Equipo
+app/(dashboard)/miembros/page.tsx               ← Equipo (edición/alta con campos separados: tipo de usuario y tipo de rol)
 app/(dashboard)/espacios/page.tsx               ← Workspaces
 app/(dashboard)/perfil/page.tsx                 ← Perfil de usuario
 app/(dashboard)/preferencias/page.tsx           ← Preferencias (Server Component)
@@ -195,6 +199,14 @@ PATCH /notifications/read-all
 GET  /users               → MemberItem[]
 GET  /users/:id           → MemberItem
 
+Normalizacion de roles de usuario:
+- `POST /users`, `POST /users/invite` y `PATCH /users/:id` aceptan formato canonico `userType` + `roleType` (tambien `user_type` + `role_type`).
+- `role` se mantiene por compatibilidad legacy.
+- `userType`: `member` | `owner` | `admin`.
+- `roleType`: `Tech Lead` | `Backend Dev` | `Frontend Dev` | `Full Stack Dev` | `Designer` | `Product Manager`.
+- Esquema fisico en BD: `users.user_type` (NOT NULL) y `users.role_type` (NULLABLE).
+- `GET /users` y `GET /users/:id` exponen `user_type` y `role_type` ademas de `role`.
+
 GET  /workspaces          → WorkspaceSummary[]
 GET  /workspaces/unassigned-projects → ProjectSummary[]
 GET  /workspaces/:id      → WorkspaceSummary
@@ -244,6 +256,7 @@ GET  /seed/status         → { users, projects, tasks, cycles }
 
 Nota de seguridad multi-cuenta:
 - `GET /users`, `GET /projects`, `GET /tasks`, `GET /tasks/mine` y `GET /cycles` deben devolver solo datos visibles dentro de las licencias/cuenta del usuario autenticado (owner/member), evitando mezclar cuentas.
+- Regla de ownership en licencias: considerar owner tanto por `licenses.owner_id` como por `license_members.role = 'owner'` para visibilidad total de workspaces/proyectos dentro de la cuenta.
 
 Respuesta siempre: `{ ok: boolean; data: T }`
 

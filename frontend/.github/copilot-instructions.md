@@ -26,7 +26,7 @@ app/
     proyectos/[id]/cycles/   ← Cycles del proyecto
     proyectos/[id]/tareas/[taskId]/  ← Detalle de tarea
     cycles/page.tsx          ← Cycles globales agrupados por estado ('use client')
-    miembros/page.tsx        ← Tabla+cards de miembros ('use client')
+    miembros/page.tsx        ← Tabla+cards de miembros ('use client', modal con select separado para tipo de usuario y tipo de rol via SearchSelect)
     espacios/page.tsx        ← Workspaces ('use client')
     perfil/page.tsx          ← Perfil de usuario ('use client')
     preferencias/page.tsx    ← Preferencias (Server Component, visual only)
@@ -158,7 +158,7 @@ CycleSummary {
 }
 
 MemberItem {
-  id, name, email, role, effective_role, initials,
+  id, name, email, role, user_type?, role_type?, effective_role, initials,
   avatar_url, avatar_color,
   presence_status, last_seen_at, projects[], tasks_open
 }

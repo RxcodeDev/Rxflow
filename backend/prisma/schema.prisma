@@ -53,6 +53,8 @@ model User {
   email           String    @unique @db.VarChar(255)
   password_hash   String    @db.VarChar(255)
   role            String    @default("member") @db.VarChar(50)
+  user_type       String    @default("member") @db.VarChar(20)
+  role_type       String?   @db.VarChar(100)
   initials        String    @db.VarChar(4)
   avatar_url      String?   @db.Text
   avatar_color    String?   @db.VarChar(20)

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type { MemberItem, ApiWrapped } from '@/types/api.types';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import SearchSelect, { type SelectOption } from '@/components/ui/SearchSelect';
 import { playDelete, playSuccess } from '@/hooks/useSound';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -13,7 +14,47 @@ const STATUS_COLOR: Record<string, string> = {
   offline: 'bg-[var(--c-border)]',
 };
 
-const ROLES = ['member', 'admin', 'Tech Lead', 'Backend Dev', 'Frontend Dev', 'Full Stack Dev', 'Designer', 'Product Manager'];
+const USER_TYPE_OPTIONS: SelectOption[] = [
+  { value: 'member', label: 'Miembro' },
+  { value: 'owner', label: 'Owner' },
+  { value: 'admin', label: 'Admin' },
+];
+
+const ROLE_OPTIONS: SelectOption[] = [
+  { value: 'Tech Lead', label: 'Tech Lead' },
+  { value: 'Backend Dev', label: 'Backend Dev' },
+  { value: 'Frontend Dev', label: 'Frontend Dev' },
+  { value: 'Full Stack Dev', label: 'Full Stack Dev' },
+  { value: 'Designer', label: 'Designer' },
+  { value: 'Product Manager', label: 'Product Manager' },
+];
+
+function getUserTypeFromMember(member: Pick<MemberItem, 'role' | 'effective_role' | 'user_type'>): string {
+  const normalizedType = (member.user_type ?? '').toLowerCase();
+  if (normalizedType === 'owner' || normalizedType === 'admin' || normalizedType === 'member') {
+    return normalizedType;
+  }
+  const role = (member.role ?? '').toLowerCase();
+  const effective = (member.effective_role ?? '').toLowerCase();
+  if (role === 'owner' || effective === 'owner') return 'owner';
+  if (role === 'admin') return 'admin';
+  return 'member';
+}
+
+function getFunctionalRole(role?: string, roleType?: string | null): string {
+  if (roleType) return roleType;
+  if (!role) return '';
+  const normalized = role.toLowerCase();
+  if (normalized === 'member' || normalized === 'owner' || normalized === 'admin') return '';
+  return role;
+}
+
+function formatMemberRole(member: Pick<MemberItem, 'role' | 'effective_role' | 'user_type' | 'role_type'>): string {
+  const userType = getUserTypeFromMember(member);
+  const functionalRole = getFunctionalRole(member.role, member.role_type ?? null);
+  const userTypeLabel = USER_TYPE_OPTIONS.find((opt) => opt.value === userType)?.label ?? 'Miembro';
+  return functionalRole ? `${userTypeLabel} - ${functionalRole}` : (member.effective_role ?? member.role ?? userTypeLabel);
+}
 
 function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`bg-[var(--c-hover)] rounded animate-pulse ${className}`} />;
@@ -113,7 +154,8 @@ function EditMemberModal({
 }) {
   const [name,       setName]       = useState(member.name);
   const [email,      setEmail]      = useState(member.email);
-  const [role,       setRole]       = useState(member.role ?? 'member');
+  const [userType,   setUserType]   = useState(getUserTypeFromMember(member));
+  const [role,       setRole]       = useState(getFunctionalRole(member.role, member.role_type ?? null));
   const [error,      setError]      = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -133,7 +175,8 @@ function EditMemberModal({
       await apiPatch<ApiWrapped<MemberItem>>(`/users/${member.id}`, {
         name: name.trim(),
         email: email.trim(),
-        role,
+        userType,
+        roleType: role || null,
       });
       playSuccess();
       onSaved({ id: member.id, name: name.trim(), email: email.trim() });
@@ -169,10 +212,26 @@ function EditMemberModal({
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="juan@empresa.io" className={fieldCls} />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[12px] font-medium text-[var(--c-text-sub)]">Rol</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} className={fieldCls}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+            <label className="text-[12px] font-medium text-[var(--c-text-sub)]">Tipo de usuario</label>
+            <SearchSelect
+              options={USER_TYPE_OPTIONS}
+              value={userType}
+              onChange={(next) => setUserType(next || 'member')}
+              placeholder="Selecciona tipo de usuario"
+              searchPlaceholder="Buscar tipo..."
+              hideNone
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[12px] font-medium text-[var(--c-text-sub)]">Tipo de rol</label>
+            <SearchSelect
+              options={ROLE_OPTIONS}
+              value={role}
+              onChange={(next) => setRole(next)}
+              placeholder="Selecciona rol funcional"
+              searchPlaceholder="Buscar rol..."
+              noneLabel="Sin rol funcional"
+            />
           </div>
           {error && <p className="text-[12px] text-[var(--c-danger)]">{error}</p>}
           <div className="flex gap-2 mt-1">
@@ -199,7 +258,8 @@ function AddMemberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [name,       setName]       = useState('');
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
-  const [role,       setRole]       = useState('member');
+  const [userType,   setUserType]   = useState('member');
+  const [role,       setRole]       = useState('');
   const [error,      setError]      = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [inviteSent, setInviteSent] = useState(false);
@@ -212,7 +272,7 @@ function AddMemberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 
   function switchMode(m: ModalMode) {
     setMode(m); setError(''); setInviteSent(false);
-    setName(''); setEmail(''); setPassword(''); setRole('member');
+    setName(''); setEmail(''); setPassword(''); setUserType('member'); setRole('');
   }
 
   async function handleCrear(e: React.FormEvent) {
@@ -222,7 +282,13 @@ function AddMemberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
     if (password.length < 8) { setError('La contraseña debe tener al menos 8 caracteres'); return; }
     setSubmitting(true);
     try {
-      await apiPost('/users', { name: name.trim(), email: email.trim(), password, role });
+      await apiPost('/users', {
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        userType,
+        roleType: role || null,
+      });
       playSuccess();
       onSuccess();
       onClose();
@@ -324,10 +390,28 @@ function AddMemberModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             )}
             {mode === 'crear' && (
               <div className="flex flex-col gap-1">
-                <label className="text-[12px] font-medium text-[var(--c-text-sub)]">Rol</label>
-                <select value={role} onChange={(e) => setRole(e.target.value)} className={fieldCls}>
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <label className="text-[12px] font-medium text-[var(--c-text-sub)]">Tipo de usuario</label>
+                <SearchSelect
+                  options={USER_TYPE_OPTIONS}
+                  value={userType}
+                  onChange={(next) => setUserType(next || 'member')}
+                  placeholder="Selecciona tipo de usuario"
+                  searchPlaceholder="Buscar tipo..."
+                  hideNone
+                />
+              </div>
+            )}
+            {mode === 'crear' && (
+              <div className="flex flex-col gap-1">
+                <label className="text-[12px] font-medium text-[var(--c-text-sub)]">Tipo de rol</label>
+                <SearchSelect
+                  options={ROLE_OPTIONS}
+                  value={role}
+                  onChange={(next) => setRole(next)}
+                  placeholder="Selecciona rol funcional"
+                  searchPlaceholder="Buscar rol..."
+                  noneLabel="Sin rol funcional"
+                />
               </div>
             )}
             {mode === 'invitar' && (
@@ -445,7 +529,7 @@ export default function MiembrosPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-[var(--c-text)]">{m.name}</p>
-                  <p className="text-[12px] text-[var(--c-text-sub)]">{m.effective_role ?? m.role}</p>
+                  <p className="text-[12px] text-[var(--c-text-sub)]">{formatMemberRole(m)}</p>
                 </div>
                 {m.last_seen_at && (
                   <span className="ml-auto text-[11px] text-[var(--c-muted)]">
@@ -501,7 +585,7 @@ export default function MiembrosPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 pr-6 text-[13px] text-[var(--c-text-sub)] whitespace-nowrap">{m.effective_role ?? m.role}</td>
+                  <td className="py-3 pr-6 text-[13px] text-[var(--c-text-sub)] whitespace-nowrap">{formatMemberRole(m)}</td>
                   <td className="py-3 pr-6">
                     <div className="flex flex-wrap gap-1">
                       {(m.projects as string[]).map((p) => (

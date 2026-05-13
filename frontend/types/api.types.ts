@@ -74,6 +74,8 @@ export interface MemberItem {
   name: string;
   email: string;
   role: string;
+  user_type?: string;
+  role_type?: string | null;
   effective_role: string;
   initials: string;
   avatar_url: string | null;

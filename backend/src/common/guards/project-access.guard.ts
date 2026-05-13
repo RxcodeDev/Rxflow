@@ -49,7 +49,13 @@ export class ProjectAccessGuard implements CanActivate {
     const licenseId = project.workspaces[0]?.workspace?.license_id;
     if (licenseId) {
       const isOwner = await this.prisma.license.count({
-        where: { id: licenseId, owner_id: user.id },
+        where: {
+          id: licenseId,
+          OR: [
+            { owner_id: user.id },
+            { members: { some: { user_id: user.id, role: 'owner' } } },
+          ],
+        },
       });
       if (isOwner > 0) return true;
     }

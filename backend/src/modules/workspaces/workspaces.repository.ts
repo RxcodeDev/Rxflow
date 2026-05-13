@@ -54,7 +54,16 @@ export class WorkspacesRepository {
       ? `WHERE (
            EXISTS (
              SELECT 1 FROM licenses l
-             WHERE l.id = w.license_id AND l.owner_id = $1
+             WHERE l.id = w.license_id
+               AND (
+                 l.owner_id = $1
+                 OR EXISTS (
+                   SELECT 1 FROM license_members lm_owner
+                   WHERE lm_owner.license_id = l.id
+                     AND lm_owner.user_id = $1
+                     AND lm_owner.role = 'owner'
+                 )
+               )
            )
            OR EXISTS (
              SELECT 1 FROM workspace_members wm2

@@ -4,6 +4,8 @@ export interface User {
   email: string;
   password_hash: string;
   role: string;
+  user_type: string;
+  role_type: string | null;
   initials: string;
   avatar_url: string | null;
   avatar_color: string | null;

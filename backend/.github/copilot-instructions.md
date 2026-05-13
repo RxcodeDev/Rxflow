@@ -83,6 +83,7 @@ The `TransformInterceptor` wraps all successful responses globally:
 - Never return cross-account data in list endpoints.
 - `GET /users`, `GET /projects`, `GET /tasks`, `GET /tasks/mine` and `GET /cycles` must be scoped to the authenticated user's visible license/account context (owner/member).
 - If a query joins projects/workspaces, enforce license visibility in SQL/Prisma filters.
+- Treat license ownership as either `licenses.owner_id = userId` or a `license_members` record with `role = 'owner'`.
 
 ---
 
@@ -258,6 +259,13 @@ POST /seed                   ← dev only (throws ForbiddenException in producti
 GET  /seed/status            → { users, projects, tasks, cycles }
 ```
 
+Users role normalization:
+- `POST /users`, `POST /users/invite` y `PATCH /users/:id` aceptan `userType` + `roleType` (o `user_type` + `role_type`) como formato canonico.
+- `role` se mantiene como legacy compatibility.
+- `userType` valido: `member`, `owner`, `admin`.
+- `roleType` valido: `Tech Lead`, `Backend Dev`, `Frontend Dev`, `Full Stack Dev`, `Designer`, `Product Manager`.
+- En `users` existen columnas fisicas `user_type` y `role_type`; `role` queda para compatibilidad hacia atras.
+
 ---
 
 ## Entities (TypeScript interfaces, NOT ORM)
@@ -413,6 +421,9 @@ npm run test        # Jest unit tests
 npm run test:e2e    # E2E tests (test/)
 npm run lint        # ESLint
 ```
+
+SQL util script (operational):
+- `scripts/sql/restructure_accounts_and_users.sql` reorganiza cuentas/licencias/workspaces segun correos objetivo y elimina usuarios no permitidos.
 
 ---
 
