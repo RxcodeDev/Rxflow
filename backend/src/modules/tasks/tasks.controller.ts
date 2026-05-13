@@ -36,8 +36,9 @@ export class TasksController {
     @Query('projectCode') projectCode?: string,
     @Query('status')      status?: string,
     @Query('cycleId')     cycleId?: string,
+    @CurrentUser()        user?: SafeUser,
   ) {
-    return this.svc.findAll({ projectCode, status, cycleId });
+    return this.svc.findAll({ projectCode, status, cycleId }, user?.id ?? '');
   }
 
   @Patch(':id')

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import s from './Sidebar.module.css';
@@ -283,6 +283,7 @@ export default function Sidebar({
   const [collapsed, setCollapsed] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(new Set());
+  const initializedWorkspaceCollapse = useRef(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const pathname = usePathname();
   const dispatch = useUIDispatch();
@@ -331,6 +332,12 @@ export default function Sidebar({
       .then((res) => setWorkspaces(normalizeWorkspaces(res.data)))
       .catch(() => {/* silencioso en error de red */});
   }, [projectsVersion]);
+
+  useEffect(() => {
+    if (initializedWorkspaceCollapse.current || workspaces.length === 0) return;
+    setCollapsedWorkspaces(new Set(workspaces.map((ws) => ws.id)));
+    initializedWorkspaceCollapse.current = true;
+  }, [workspaces]);
 
   useEffect(() => {
     apiGet<ApiWrapped<number>>('/notifications/unread-count')

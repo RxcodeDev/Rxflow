@@ -42,12 +42,13 @@ cd frontend && npm run dev
 
 ### Frontend (`frontend/`)
 ```
+app/page.tsx                                   ← Landing pública de entrada con botones a /login y /register
 app/(dashboard)/layout.tsx                      ← UIProvider + Sidebar + Navbar + modales globales
 app/(dashboard)/inicio/page.tsx                 ← Dashboard overview ('use client', datos reales)
 app/(dashboard)/dashboard/page.tsx              ← Vista de dashboard alternativa
 app/(dashboard)/mis-tareas/page.tsx             ← Tareas por status ('use client')
 app/(dashboard)/inbox/page.tsx                  ← Notificaciones
-app/(dashboard)/proyectos/page.tsx              ← Lista de proyectos
+app/(dashboard)/proyectos/page.tsx              ← Lista de proyectos + menú contextual con Importar/Exportar por proyecto (modal)
 app/(dashboard)/proyectos/[id]/board/page.tsx   ← Kanban board
 app/(dashboard)/proyectos/[id]/lista/page.tsx   ← Vista lista
 app/(dashboard)/proyectos/[id]/backlog/page.tsx ← Backlog
@@ -82,6 +83,8 @@ components/layouts/Navbar.tsx     ← Bottom nav mobile ('use client')
 components/features/tasks/
   CreateTaskModal.tsx             ← Modal global — NO montar en páginas individuales
   TaskDrawer.tsx                  ← Drawer global — NO montar en páginas individuales; cabecera + propiedades fijas, scroll solo en contenido central, composer de comentarios fijo abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
+components/features/projects/
+  ImportProjectModal.tsx          ← Modal para contexto IA + importación JSON y exportación completa por proyecto
 components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal
 
 store/UIContext.tsx                ← UIProvider, useUIState(), useUIDispatch()
@@ -91,6 +94,7 @@ types/api.types.ts                ← ApiWrapped<T>, ProjectSummary, TaskItem, T
                                      MemberItem, NotificationItem, EpicItem, WorkspaceSummary, PaginatedResponse,
                                      License, WikiPageSummary, WikiPageDetail, WikiTreeNode
 middleware.ts                     ← Protege rutas, redirige a /login si no hay cookie rxflow_token
+proxy.ts                          ← Guard de rutas: permite /, /login y /register sin token
 ```
 
 Notas Wiki:
@@ -116,6 +120,8 @@ modules/seed/                     ← POST /seed, GET /seed/status
 modules/workspaces/               ← Workspaces CRUD + miembros + proyectos
 modules/licenses/                 ← Licenses CRUD + miembros + workspaces (usa Prisma)
 modules/wiki/                     ← Wiki CRUD + filtros por proyecto/workspace/épica/tarea (usa Prisma)
+modules/export/                   ← Export full/markdown + export por proyecto + contexto IA para LLM
+modules/import/                   ← Import masivo por proyecto (épicas/tareas/subtareas desde JSON)
 prisma/                           ← PrismaModule + PrismaService (licenses + wiki)
 common/guards/jwt-auth.guard.ts   ← JwtAuthGuard — usar en todo controlador protegido
 common/decorators/current-user.decorator.ts  ← @CurrentUser()
@@ -224,9 +230,20 @@ PATCH /wiki/:id                            { title?, content?, ...relaciones }
 DELETE /wiki/:id
 PATCH /wiki/:id/archive                    → toggle is_archived
 
+GET  /export/full
+GET  /export/markdown
+GET  /export/project/:code                 → JSON completo de un proyecto
+GET  /export/project/:code/context         → contexto para LLM (IDs, relaciones, valores válidos, esquema)
+
+POST /import/project/:code/preview         → valida/normaliza sin insertar; devuelve preview + errores
+POST /import/project/:code                 { epics?: ImportEpicDto[], tasks?: ImportTaskDto[] }
+
 POST /seed                (solo dev)
 GET  /seed/status         → { users, projects, tasks, cycles }
 ```
+
+Nota de seguridad multi-cuenta:
+- `GET /users`, `GET /projects`, `GET /tasks`, `GET /tasks/mine` y `GET /cycles` deben devolver solo datos visibles dentro de las licencias/cuenta del usuario autenticado (owner/member), evitando mezclar cuentas.
 
 Respuesta siempre: `{ ok: boolean; data: T }`
 

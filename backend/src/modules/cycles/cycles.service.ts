@@ -7,8 +7,8 @@ import type { UpdateCycleDto } from './dto/update-cycle.dto';
 export class CyclesService {
   constructor(private readonly repo: CyclesRepository) {}
 
-  findAll() {
-    return this.repo.findAll();
+  findAll(userId: string) {
+    return this.repo.findAll(userId);
   }
 
   async findById(id: string) {

@@ -8,7 +8,7 @@ export class ProjectsRepository {
     return getPool();
   }
 
-  async findAll(): Promise<ProjectSummary[]> {
+  async findAll(userId: string): Promise<ProjectSummary[]> {
     const { rows } = await this.pool.query(`
       SELECT
         p.id, p.code, p.name, p.description, p.methodology, p.status,
@@ -41,12 +41,28 @@ export class ProjectsRepository {
         LIMIT 1
       ) ac ON true
       WHERE p.status != 'archivado'
+        AND (
+          p.created_by = $1
+          OR EXISTS (
+            SELECT 1 FROM project_members pm
+            WHERE pm.project_id = p.id AND pm.user_id = $1
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM workspace_projects wp
+            JOIN workspaces w ON w.id = wp.workspace_id
+            JOIN licenses l ON l.id = w.license_id
+            LEFT JOIN license_members lm ON lm.license_id = l.id
+            WHERE wp.project_id = p.id
+              AND (l.owner_id = $1 OR lm.user_id = $1)
+          )
+        )
       ORDER BY p.created_at ASC
-    `);
+    `, [userId]);
     return rows;
   }
 
-  async findByCode(code: string): Promise<ProjectSummary | null> {
+  async findByCode(code: string, userId: string): Promise<ProjectSummary | null> {
     const { rows } = await this.pool.query(`
       SELECT
         p.id, p.code, p.name, p.description, p.methodology, p.status,
@@ -78,8 +94,24 @@ export class ProjectsRepository {
         WHERE project_id = p.id AND status = 'activo'
         LIMIT 1
       ) ac ON true
-      WHERE UPPER(p.code) = UPPER($1)
-    `, [code]);
+      WHERE UPPER(p.code) = UPPER($2)
+        AND (
+          p.created_by = $1
+          OR EXISTS (
+            SELECT 1 FROM project_members pm
+            WHERE pm.project_id = p.id AND pm.user_id = $1
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM workspace_projects wp
+            JOIN workspaces w ON w.id = wp.workspace_id
+            JOIN licenses l ON l.id = w.license_id
+            LEFT JOIN license_members lm ON lm.license_id = l.id
+            WHERE wp.project_id = p.id
+              AND (l.owner_id = $1 OR lm.user_id = $1)
+          )
+        )
+    `, [userId, code]);
     return rows[0] ?? null;
   }
 
@@ -102,7 +134,7 @@ export class ProjectsRepository {
        SELECT id, $2, 'owner' FROM projects WHERE code = $1`,
       [rows[0].code, data.createdBy],
     );
-    return (await this.findByCode(rows[0].code))!;
+    return (await this.findByCode(rows[0].code, data.createdBy))!;
   }
 
   async updateById(id: string, data: {
@@ -127,14 +159,23 @@ export class ProjectsRepository {
       values,
     );
     if (!rows[0]) return null;
-    return this.findByCode(rows[0].code);
+    const { rows: ownerRows } = await this.pool.query<{ user_id: string }>(
+      `SELECT user_id
+       FROM project_members
+       WHERE project_id = $1
+       ORDER BY CASE WHEN role = 'owner' THEN 0 ELSE 1 END, user_id
+       LIMIT 1`,
+      [id],
+    );
+    const scopeUserId = ownerRows[0]?.user_id;
+    return scopeUserId ? this.findByCode(rows[0].code, scopeUserId) : null;
   }
 
   async deleteById(id: string): Promise<void> {
     await this.pool.query(`DELETE FROM projects WHERE id = $1`, [id]);
   }
 
-  async findEpicsByCode(code: string): Promise<{
+  async findEpicsByCode(code: string, userId: string): Promise<{
     id: string; name: string; description: string | null;
     status: string; parent_epic_id: string | null; parent_epic_name: string | null;
   }[]> {
@@ -145,9 +186,25 @@ export class ProjectsRepository {
       FROM epics e
       JOIN projects p ON p.id = e.project_id
       LEFT JOIN epics pe ON pe.id = e.parent_epic_id
-      WHERE UPPER(p.code) = UPPER($1)
+      WHERE UPPER(p.code) = UPPER($2)
+        AND (
+          p.created_by = $1
+          OR EXISTS (
+            SELECT 1 FROM project_members pm
+            WHERE pm.project_id = p.id AND pm.user_id = $1
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM workspace_projects wp
+            JOIN workspaces w ON w.id = wp.workspace_id
+            JOIN licenses l ON l.id = w.license_id
+            LEFT JOIN license_members lm ON lm.license_id = l.id
+            WHERE wp.project_id = p.id
+              AND (l.owner_id = $1 OR lm.user_id = $1)
+          )
+        )
       ORDER BY e.name
-    `, [code]);
+    `, [userId, code]);
     return rows;
   }
 
@@ -228,10 +285,32 @@ export class ProjectsRepository {
     await this.pool.query(`DELETE FROM epics WHERE id = $1`, [id]);
   }
 
-  async findMembersByCode(_code: string): Promise<{ id: string; name: string; initials: string }[]> {
+  async findMembersByCode(code: string, userId: string): Promise<{ id: string; name: string; initials: string }[]> {
     const { rows } = await this.pool.query(`
-      SELECT id, name, initials FROM users WHERE is_active = true ORDER BY name
-    `);
+      SELECT DISTINCT u.id, u.name, u.initials
+      FROM projects p
+      JOIN project_members pm ON pm.project_id = p.id
+      JOIN users u ON u.id = pm.user_id
+      WHERE UPPER(p.code) = UPPER($2)
+        AND u.is_active = true
+        AND (
+          p.created_by = $1
+          OR EXISTS (
+            SELECT 1 FROM project_members pmc
+            WHERE pmc.project_id = p.id AND pmc.user_id = $1
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM workspace_projects wp
+            JOIN workspaces w ON w.id = wp.workspace_id
+            JOIN licenses l ON l.id = w.license_id
+            LEFT JOIN license_members lm ON lm.license_id = l.id
+            WHERE wp.project_id = p.id
+              AND (l.owner_id = $1 OR lm.user_id = $1)
+          )
+        )
+      ORDER BY u.name
+    `, [userId, code]);
     return rows;
   }
 }

@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CyclesService } from './cycles.service';
 import { CreateCycleDto } from './dto/create-cycle.dto';
 import { UpdateCycleDto } from './dto/update-cycle.dto';
+import type { SafeUser } from '../users/entities/user.entity';
 
 @Controller('cycles')
 @UseGuards(JwtAuthGuard)
@@ -10,8 +12,8 @@ export class CyclesController {
   constructor(private readonly svc: CyclesService) {}
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  findAll(@CurrentUser() user: SafeUser) {
+    return this.svc.findAll(user.id);
   }
 
   @Post()

@@ -7,6 +7,7 @@ import type { ProjectSummary, ApiWrapped } from '@/types/api.types';
 import { useUIDispatch } from '@/store/UIContext';
 import { openCreateModal, bumpProjects } from '@/store/slices/uiSlice';
 import EditProjectModal from '@/components/features/projects/EditProjectModal';
+import ImportProjectModal from '@/components/features/projects/ImportProjectModal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { playDelete } from '@/hooks/useSound';
 
@@ -16,10 +17,11 @@ function Skeleton({ className = '' }: { className?: string }) {
 
 type Tab = 'todos' | 'activos' | 'archivados';
 
-function ProjectMenu({ project, onEdit, onDelete }: {
+function ProjectMenu({ project, onEdit, onDelete, onImport }: {
   project: ProjectSummary;
   onEdit: (p: ProjectSummary) => void;
   onDelete: (id: string) => void;
+  onImport: (p: ProjectSummary) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, right: 0 });
@@ -64,6 +66,10 @@ function ProjectMenu({ project, onEdit, onDelete }: {
             className="w-full text-left px-3 py-2 text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors cursor-pointer">
             Editar proyecto
           </button>
+          <button type="button" onClick={() => { setOpen(false); onImport(project); }}
+            className="w-full text-left px-3 py-2 text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors cursor-pointer">
+            Importar / Exportar
+          </button>
           <hr className="border-[var(--c-line)] mx-2 my-1" />
           <button type="button" onClick={() => { setOpen(false); onDelete(project.id); }}
             className="w-full text-left px-3 py-2 text-[var(--c-danger)] hover:bg-[var(--c-hover)] transition-colors cursor-pointer">
@@ -81,6 +87,7 @@ export default function ProyectosPage() {
   const [tab,             setTab]             = useState<Tab>('todos');
   const [editProject,     setEditProject]     = useState<ProjectSummary | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [importProject,   setImportProject]   = useState<ProjectSummary | null>(null);
   const dispatch = useUIDispatch();
 
   useEffect(() => {
@@ -194,7 +201,7 @@ export default function ProyectosPage() {
                     <span className="text-[11px] text-[var(--c-muted)] tabular-nums">{p.progress_pct}%</span>
                   </div>
                 </Link>
-                <ProjectMenu project={p} onEdit={setEditProject} onDelete={setPendingDeleteId} />
+                <ProjectMenu project={p} onEdit={setEditProject} onDelete={setPendingDeleteId} onImport={setImportProject} />
               </div>
             ))}
           </div>
@@ -259,7 +266,7 @@ export default function ProyectosPage() {
                       </span>
                     </td>
                     <td className="py-3">
-                      <ProjectMenu project={p} onEdit={setEditProject} onDelete={setPendingDeleteId} />
+                      <ProjectMenu project={p} onEdit={setEditProject} onDelete={setPendingDeleteId} onImport={setImportProject} />
                     </td>
                   </tr>
                 ))}
@@ -282,6 +289,14 @@ export default function ProyectosPage() {
         onConfirm={() => { if (pendingDeleteId) handleDelete(pendingDeleteId); setPendingDeleteId(null); }}
         onCancel={() => setPendingDeleteId(null)}
       />
+
+      {importProject && (
+        <ImportProjectModal
+          projectCode={importProject.code}
+          projectName={importProject.name}
+          onClose={() => setImportProject(null)}
+        />
+      )}
     </div>
   );
 }

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, use, useMemo } from 'react';
 import Link from 'next/link';
-import { apiGet } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { apiGet, ApiError } from '@/lib/api';
 import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import type { TaskItem, ProjectSummary, ApiWrapped } from '@/types/api.types';
@@ -18,6 +19,7 @@ function Skeleton({ className = '' }: { className?: string }) {
 export default function ListaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectCode } = use(params);
   const code = projectCode.toUpperCase();
+  const router = useRouter();
   const dispatch = useUIDispatch();
   const { tasksVersion } = useUIState();
 
@@ -39,9 +41,15 @@ export default function ListaPage({ params }: { params: Promise<{ id: string }> 
         setProject(pRes.data);
         setTasks(tRes.data);
       })
-      .catch(console.error)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      })
       .finally(() => setLoading(false));
-  }, [code, tasksVersion]);
+  }, [code, tasksVersion, router]);
 
   const filtered = useMemo(() =>
     tasks.filter((t) => {

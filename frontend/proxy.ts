@@ -6,6 +6,10 @@ const PUBLIC_PATHS = ['/login', '/register'];
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === '/') {
+    return NextResponse.next();
+  }
+
   // Allow public routes
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();

@@ -10,6 +10,7 @@ Next.js 16.2.1 · React 19.2.4 · TypeScript 5 · Tailwind CSS v4 · Port **3001
 
 ```
 app/
+  page.tsx                   ← Landing pública de entrada con CTA a login/registro
   (auth)/                    ← Login / Register — no layout, full-screen card
   (dashboard)/               ← Protected area — Sidebar + BottomNav layout
     layout.tsx               ← UIProvider + Sidebar + Navbar + CreateTaskModal + TaskDrawer
@@ -17,7 +18,7 @@ app/
     dashboard/page.tsx       ← Vista de dashboard alternativa ('use client')
     mis-tareas/page.tsx      ← Mis tareas grouped by status ('use client')
     inbox/page.tsx           ← Notificaciones — mark read on click ('use client')
-    proyectos/page.tsx       ← Lista de proyectos — tabs Activos/Archivados/Todos ('use client')
+    proyectos/page.tsx       ← Lista de proyectos — tabs Activos/Archivados/Todos + menu Importar/Exportar por proyecto ('use client')
     proyectos/[id]/board/    ← Kanban board por proyecto ('use client')
     proyectos/[id]/lista/    ← Vista lista
     proyectos/[id]/backlog/  ← Backlog
@@ -45,7 +46,7 @@ components/
     tasks/
       CreateTaskModal.tsx    ← Global modal — NEVER mount in individual pages
       TaskDrawer.tsx         ← Global drawer — NEVER mount in individual pages; header + properties fixed, center content scroll, comment composer fixed abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
-    projects/                ← Project-related feature components
+    projects/                ← Project-related feature components (incluye ImportProjectModal con previsualizacion obligatoria previa a importar)
     users/                   ← UserTable, UserForm
 
 store/

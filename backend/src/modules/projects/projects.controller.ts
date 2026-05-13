@@ -39,13 +39,13 @@ export class ProjectsController {
   constructor(private readonly svc: ProjectsService) {}
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  findAll(@CurrentUser() user: AuthUser) {
+    return this.svc.findAll(user.id);
   }
 
   @Get(':code/epics')
-  getEpics(@Param('code') code: string) {
-    return this.svc.getEpics(code);
+  getEpics(@Param('code') code: string, @CurrentUser() user: AuthUser) {
+    return this.svc.getEpics(code, user.id);
   }
 
   @Post(':code/epics')
@@ -72,13 +72,13 @@ export class ProjectsController {
   }
 
   @Get(':code/members')
-  getMembers(@Param('code') code: string) {
-    return this.svc.getMembers(code);
+  getMembers(@Param('code') code: string, @CurrentUser() user: AuthUser) {
+    return this.svc.getMembers(code, user.id);
   }
 
   @Get(':code')
-  findOne(@Param('code') code: string) {
-    return this.svc.findByCode(code);
+  findOne(@Param('code') code: string, @CurrentUser() user: AuthUser) {
+    return this.svc.findByCode(code, user.id);
   }
 
   @Post()

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { useParams, useRouter } from 'next/navigation';
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from '@/lib/api';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { ProjectSummary, EpicItem, TaskItem, ApiWrapped } from '@/types/api.types';
 import Modal from '@/components/ui/Modal';
@@ -301,6 +301,7 @@ export default function EpicasPage() {
   const params = useParams<{ id: string }>();
   const projectCode = params.id;
   const code = projectCode.toUpperCase();
+  const router = useRouter();
   const dispatch = useUIDispatch();
   const { tasksVersion } = useUIState();
 
@@ -340,8 +341,14 @@ export default function EpicasPage() {
   const fetchTasks = useCallback(() => {
     apiGet<ApiWrapped<TaskItem[]>>(`/projects/${code}/tasks`)
       .then((r) => setTasks(r.data))
-      .catch(console.error);
-  }, [code]);
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      });
+  }, [code, router]);
 
   /* Full load — only re-runs when project changes */
   useEffect(() => {
@@ -362,9 +369,15 @@ export default function EpicasPage() {
         eRes.data.filter(e => e.status === 'activa' && !e.parent_epic_id).slice(0, 3)
           .forEach(e => { if (!epicOpenState.has(e.id)) epicOpenState.set(e.id, true); });
       })
-      .catch(console.error)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      })
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, router]);
 
   /* Tasks-only refresh when a task is patched from the drawer */
   useEffect(() => {

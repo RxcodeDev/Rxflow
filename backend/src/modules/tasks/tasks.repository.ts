@@ -66,11 +66,29 @@ export class TasksRepository {
       .map(toTaskItem);
   }
 
-  async findByProject(projectCode: string): Promise<TaskItem[]> {
+  async findByProject(projectCode: string, userId: string): Promise<TaskItem[]> {
     const tasks = await this.prisma.task.findMany({
       where: {
         parent_task_id: null,
-        project: { code: { equals: projectCode, mode: 'insensitive' } },
+        project: {
+          code: { equals: projectCode, mode: 'insensitive' },
+          OR: [
+            { created_by: userId },
+            { members: { some: { user_id: userId } } },
+            {
+              workspaces: {
+                some: {
+                  workspace: {
+                    OR: [
+                      { license: { owner_id: userId } },
+                      { license: { members: { some: { user_id: userId } } } },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
       },
       include:  TASK_LIST_INCLUDE,
       orderBy: [{ status: 'asc' }, { position: 'asc' }, { sequential_id: 'asc' }],
@@ -82,9 +100,34 @@ export class TasksRepository {
     projectCode?: string;
     status?:      string;
     cycleId?:     string;
-  }): Promise<TaskItem[]> {
-    const where: Prisma.TaskWhereInput = { parent_task_id: null };
-    if (filters.projectCode) where.project  = { code: { equals: filters.projectCode, mode: 'insensitive' } };
+  }, userId: string): Promise<TaskItem[]> {
+    const where: Prisma.TaskWhereInput = {
+      parent_task_id: null,
+      project: {
+        OR: [
+          { created_by: userId },
+          { members: { some: { user_id: userId } } },
+          {
+            workspaces: {
+              some: {
+                workspace: {
+                  OR: [
+                    { license: { owner_id: userId } },
+                    { license: { members: { some: { user_id: userId } } } },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      },
+    };
+    if (filters.projectCode) {
+      where.project = {
+        ...(where.project as Prisma.ProjectWhereInput),
+        code: { equals: filters.projectCode, mode: 'insensitive' },
+      };
+    }
     if (filters.status)      where.status   = filters.status;
     if (filters.cycleId)     where.cycle_id = filters.cycleId;
 

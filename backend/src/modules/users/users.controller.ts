@@ -15,8 +15,8 @@ export class UsersController {
   }
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  findAll(@CurrentUser() user: SafeUser) {
+    return this.svc.findAll(user.id);
   }
 
   @Get(':id')

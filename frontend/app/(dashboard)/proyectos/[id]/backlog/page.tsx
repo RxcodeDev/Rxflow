@@ -2,7 +2,8 @@
 
 import { useState, useEffect, use, useMemo } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPatch } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { apiGet, apiPatch, ApiError } from '@/lib/api';
 import { useUIDispatch, useUIState } from '@/store/UIContext';
 import { openDrawer } from '@/store/slices/uiSlice';
 import type { TaskItem, ProjectSummary, ApiWrapped } from '@/types/api.types';
@@ -24,6 +25,7 @@ const PROMOTION_LABEL: Record<string, string> = {
 export default function BacklogPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectCode } = use(params);
   const code = projectCode.toUpperCase();
+  const router = useRouter();
   const dispatch = useUIDispatch();
   const { tasksVersion } = useUIState();
 
@@ -46,9 +48,15 @@ export default function BacklogPage({ params }: { params: Promise<{ id: string }
         /* backlog = tasks not yet started */
         setTasks(tRes.data.filter(t => t.status === 'backlog'));
       })
-      .catch(console.error)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      })
       .finally(() => setLoading(false));
-  }, [code, tasksVersion]);
+  }, [code, tasksVersion, router]);
 
   const filtered = useMemo(() =>
     tasks.filter((t) => {

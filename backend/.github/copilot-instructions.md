@@ -49,6 +49,8 @@ src/
     workspaces/                ← Workspaces CRUD + members + projects (raw pg)
     licenses/                  ← Licenses CRUD + members + workspaces (Prisma)
     wiki/                      ← Wiki pages CRUD — multi-tenant by license_id (Prisma)
+    export/                    ← Export full, markdown y por proyecto + contexto IA
+    import/                    ← Importación masiva de épicas/tareas por proyecto (raw pg)
 
   prisma/
     prisma.module.ts           ← PrismaModule (globalForRoot)
@@ -75,6 +77,12 @@ The `TransformInterceptor` wraps all successful responses globally:
 ```
 
 **Never return raw data** — let the interceptor handle wrapping.
+
+### Multi-Tenant Isolation (Critical)
+
+- Never return cross-account data in list endpoints.
+- `GET /users`, `GET /projects`, `GET /tasks`, `GET /tasks/mine` and `GET /cycles` must be scoped to the authenticated user's visible license/account context (owner/member).
+- If a query joins projects/workspaces, enforce license visibility in SQL/Prisma filters.
 
 ---
 
@@ -237,6 +245,14 @@ DELETE /licenses/:id/assign-workspace { workspaceId }
 POST /licenses/:id/assign-project     { projectId }
 DELETE /licenses/:id/assign-project   { projectId }
 GET  /licenses/:id/my-workspaces
+
+GET  /export/full
+GET  /export/markdown
+GET  /export/project/:code
+GET  /export/project/:code/context
+
+POST /import/project/:code/preview { epics?: ImportEpicDto[], tasks?: ImportTaskDto[] }
+POST /import/project/:code    { epics?: ImportEpicDto[], tasks?: ImportTaskDto[] }
 
 POST /seed                   ← dev only (throws ForbiddenException in production)
 GET  /seed/status            → { users, projects, tasks, cycles }

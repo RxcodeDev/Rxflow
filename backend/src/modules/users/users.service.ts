@@ -16,8 +16,8 @@ export class UsersService {
     return user;
   }
 
-  findAll() {
-    return this.repo.findAll();
+  findAll(userId: string) {
+    return this.repo.findAll(userId);
   }
 
   async invite(dto: { name: string; email: string; password: string }) {

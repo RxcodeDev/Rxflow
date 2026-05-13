@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, use, useMemo, useCallback } from 'react';
-import { apiGet, apiPost, apiPatch } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { apiGet, apiPost, apiPatch, ApiError } from '@/lib/api';
 import type { TaskItem, ProjectSummary, ApiWrapped } from '@/types/api.types';
 import Modal from '@/components/ui/Modal';
 import { useUIDispatch, useUIState } from '@/store/UIContext';
@@ -114,6 +115,7 @@ function TaskCard({
 /* ── Page ────────────────────────────────────────────── */
 export default function BoardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: code } = use(params);
+  const router = useRouter();
   const dispatch = useUIDispatch();
   const { tasksVersion } = useUIState();
 
@@ -155,8 +157,14 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
   const fetchTasks = useCallback(() => {
     apiGet<ApiWrapped<TaskItem[]>>(`/projects/${code}/tasks`)
       .then((r) => setAllTasks(r.data))
-      .catch(console.error);
-  }, [code]);
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      });
+  }, [code, router]);
 
   useEffect(() => {
     setLoading(true);
@@ -172,9 +180,15 @@ export default function BoardPage({ params }: { params: Promise<{ id: string }> 
         setEpics(eRes.data);
         setMembers(mRes.data);
       })
-      .catch(console.error)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      })
       .finally(() => setLoading(false));
-  }, [code, tasksVersion]);
+  }, [code, tasksVersion, router]);
 
   // Client-side filtering
   const filtered = useMemo(() =>

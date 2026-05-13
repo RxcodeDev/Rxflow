@@ -91,8 +91,24 @@ export class UsersRepository {
     return rows[0] ?? null;
   }
 
-  async findAll(): Promise<(SafeUser & { projects: string[]; tasks_open: number })[]> {
+  async findAll(userId: string): Promise<(SafeUser & { projects: string[]; tasks_open: number })[]> {
     const { rows } = await this.pool.query(`
+      WITH accessible_licenses AS (
+        SELECT l.id
+        FROM licenses l
+        WHERE l.owner_id = $1
+        UNION
+        SELECT lm.license_id
+        FROM license_members lm
+        WHERE lm.user_id = $1
+      ),
+      visible_users AS (
+        SELECT DISTINCT lm.user_id AS id
+        FROM license_members lm
+        WHERE lm.license_id IN (SELECT id FROM accessible_licenses)
+        UNION
+        SELECT $1::uuid
+      )
       SELECT
         ${SAFE_COLS},
         COALESCE(
@@ -124,8 +140,9 @@ export class UsersRepository {
           AND parent_task_id IS NULL
       ) tc ON true
       WHERE u.is_active = true
+        AND u.id IN (SELECT id FROM visible_users)
       ORDER BY u.name
-    `);
+    `, [userId]);
     return rows;
   }
 }

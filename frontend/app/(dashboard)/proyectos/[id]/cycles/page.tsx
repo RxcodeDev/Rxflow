@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, use } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from '@/lib/api';
 import type { CycleSummary, ProjectSummary, TaskItem, ApiWrapped } from '@/types/api.types';
 import Modal from '@/components/ui/Modal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -465,6 +466,7 @@ function CalendarView({ cycles }: { cycles: CycleSummary[] }) {
 export default function ProjectCyclesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = use(params);
   const code = projectId.toUpperCase();
+  const router = useRouter();
 
   const [allCycles,  setAllCycles]  = useState<CycleSummary[]>([]);
   const [project,    setProject]    = useState<ProjectSummary | null>(null);
@@ -507,9 +509,15 @@ export default function ProjectCyclesPage({ params }: { params: Promise<{ id: st
         setAllCycles(cRes.data);
         setProject(pRes.data);
       })
-      .catch(console.error)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          router.replace('/proyectos');
+          return;
+        }
+        console.error(err);
+      })
       .finally(() => setLoading(false));
-  }, [code]);
+  }, [code, router]);
 
   useEffect(() => { fetchData(); }, [fetchData, tasksVersion]);
 

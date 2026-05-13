@@ -12,12 +12,12 @@ export interface CreateProjectDto {
 export class ProjectsService {
   constructor(private readonly repo: ProjectsRepository) {}
 
-  async findAll() {
-    return this.repo.findAll();
+  async findAll(userId: string) {
+    return this.repo.findAll(userId);
   }
 
-  async findByCode(code: string) {
-    const project = await this.repo.findByCode(code);
+  async findByCode(code: string, userId: string) {
+    const project = await this.repo.findByCode(code, userId);
     if (!project) throw new NotFoundException(`Proyecto '${code}' no encontrado`);
     return project;
   }
@@ -32,8 +32,8 @@ export class ProjectsService {
     });
   }
 
-  async getEpics(code: string) {
-    return this.repo.findEpicsByCode(code);
+  async getEpics(code: string, userId: string) {
+    return this.repo.findEpicsByCode(code, userId);
   }
 
   async createEpic(code: string, dto: { name: string; description?: string; parent_epic_id?: string | null }, userId: string) {
@@ -48,8 +48,8 @@ export class ProjectsService {
     await this.repo.deleteEpic(id);
   }
 
-  async getMembers(code: string) {
-    return this.repo.findMembersByCode(code);
+  async getMembers(code: string, userId: string) {
+    return this.repo.findMembersByCode(code, userId);
   }
 
   async update(id: string, dto: {

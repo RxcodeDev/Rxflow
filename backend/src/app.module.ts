@@ -13,6 +13,7 @@ import { WorkspacesModule } from './modules/workspaces/workspaces.module';
 import { LicensesModule } from './modules/licenses/licenses.module';
 import { WikiModule } from './modules/wiki/wiki.module';
 import { ExportModule } from './modules/export/export.module';
+import { ImportModule } from './modules/import/import.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ExportModule } from './modules/export/export.module';
     LicensesModule,
     WikiModule,
     ExportModule,
+    ImportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

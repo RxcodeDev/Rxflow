@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { getPool } from '../../config/database.config';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -197,6 +197,190 @@ export class ExportService {
     }
 
     return lines.join('\n');
+  }
+
+  // ── Per-project export/context ────────────────────────────────────────────
+
+  async exportProject(code: string) {
+    const { rows: projRows } = await this.pool.query(
+      `SELECT p.id, p.code, p.name, p.description, p.methodology, p.status, p.created_at,
+              COALESCE(
+                json_agg(DISTINCT jsonb_build_object(
+                  'user_id', pm.user_id, 'name', u.name, 'initials', u.initials, 'role', pm.role
+                )) FILTER (WHERE pm.user_id IS NOT NULL),
+                '[]'
+              ) AS members
+       FROM projects p
+       LEFT JOIN project_members pm ON pm.project_id = p.id
+       LEFT JOIN users u ON u.id = pm.user_id
+       WHERE UPPER(p.code) = UPPER($1)
+       GROUP BY p.id`,
+      [code],
+    );
+
+    if (!projRows[0]) {
+      throw new NotFoundException(`Proyecto "${code}" no encontrado`);
+    }
+
+    const project = projRows[0];
+
+    const [epicsRes, cyclesRes, tasksRes] = await Promise.all([
+      this.pool.query(
+        `SELECT e.id, e.name, e.description, e.status, e.parent_epic_id, e.created_at
+         FROM epics e
+         WHERE e.project_id = $1
+         ORDER BY e.created_at ASC`,
+        [project.id],
+      ),
+      this.pool.query(
+        `SELECT cy.id, cy.name, cy.status, cy.start_date, cy.end_date, cy.created_at
+         FROM cycles cy
+         WHERE cy.project_id = $1
+         ORDER BY cy.created_at ASC`,
+        [project.id],
+      ),
+      this.pool.query(
+        `SELECT
+           t.id, t.title, t.description, t.status, t.priority,
+           t.parent_task_id, t.epic_id, t.cycle_id, t.due_date, t.created_at,
+           COALESCE(
+             json_agg(DISTINCT jsonb_build_object('user_id', ta.user_id, 'name', u.name))
+             FILTER (WHERE ta.user_id IS NOT NULL),
+             '[]'
+           ) AS assignees
+         FROM tasks t
+         LEFT JOIN task_assignees ta ON ta.task_id = t.id
+         LEFT JOIN users u ON u.id = ta.user_id
+         WHERE t.project_id = $1
+         GROUP BY t.id
+         ORDER BY t.created_at ASC`,
+        [project.id],
+      ),
+    ]);
+
+    return {
+      _meta: {
+        exported_at: new Date().toISOString(),
+        source: 'Rxflow',
+        format_version: '1.0',
+        project_code: project.code,
+        counts: {
+          epics: epicsRes.rows.length,
+          cycles: cyclesRes.rows.length,
+          tasks: tasksRes.rows.length,
+        },
+      },
+      project,
+      epics: epicsRes.rows,
+      cycles: cyclesRes.rows,
+      tasks: tasksRes.rows,
+    };
+  }
+
+  async getProjectContext(code: string) {
+    const { rows: projRows } = await this.pool.query(
+      `SELECT id, code, name FROM projects WHERE UPPER(code) = UPPER($1)`,
+      [code],
+    );
+
+    if (!projRows[0]) {
+      throw new NotFoundException(`Proyecto "${code}" no encontrado`);
+    }
+
+    const project = projRows[0];
+
+    const [membersRes, epicsRes, cyclesRes] = await Promise.all([
+      this.pool.query(
+        `SELECT
+           u.id,
+           u.name,
+           u.email,
+           u.initials,
+           u.role,
+           (pm.user_id IS NOT NULL) AS in_project,
+           pm.role AS project_role
+         FROM users u
+         LEFT JOIN project_members pm
+           ON pm.user_id = u.id
+          AND pm.project_id = $1
+         WHERE u.is_active = true
+         ORDER BY
+           (pm.user_id IS NOT NULL) DESC,
+           u.name ASC`,
+        [project.id],
+      ),
+      this.pool.query(
+        `SELECT e.id, e.name, e.status, e.parent_epic_id
+         FROM epics e
+         WHERE e.project_id = $1
+         ORDER BY e.created_at ASC`,
+        [project.id],
+      ),
+      this.pool.query(
+        `SELECT cy.id, cy.name, cy.status
+         FROM cycles cy
+         WHERE cy.project_id = $1
+         ORDER BY cy.created_at ASC`,
+        [project.id],
+      ),
+    ]);
+
+    return {
+      project,
+      members: membersRes.rows,
+      epics: epicsRes.rows,
+      cycles: cyclesRes.rows,
+      assignment_guidelines: {
+        summary:
+          'Usa siempre UUIDs exactos en assignee_ids. No usar nombres, iniciales ni emails.',
+        includes_all_active_users: true,
+        includes_project_members_first: true,
+        can_assign_users_outside_project: true,
+        rules: [
+          'assignee_ids debe contener solo IDs del bloque members.',
+          'Si no hay responsable claro, usa assignee_ids: [] en vez de inventar IDs.',
+          'Prioriza usuarios con in_project=true antes de asignar fuera del proyecto.',
+        ],
+      },
+      valid_task_statuses: ['backlog', 'en_progreso', 'en_revision', 'bloqueado', 'completada'],
+      valid_priorities: ['baja', 'media', 'alta', 'urgente'],
+      valid_epic_statuses: ['activa', 'completada', 'backlog'],
+      import_schema: {
+        description:
+          'JSON con claves epics y/o tasks. Usa UUIDs exactos de members/epics/cycles. ' +
+          'Puedes usar epic_ref (indice 0-based) para apuntar a epicas creadas en este mismo JSON.',
+        epics: [
+          {
+            name: 'string (requerido)',
+            description: 'string (opcional)',
+            status: 'activa | completada | backlog',
+            parent_epic_id: 'UUID de epica existente o null',
+            parent_epic_ref: 'indice 0-based del array epics o null',
+          },
+        ],
+        tasks: [
+          {
+            title: 'string (requerido)',
+            description: 'string (opcional)',
+            status: 'backlog | en_progreso | en_revision | bloqueado | completada',
+            priority: 'baja | media | alta | urgente',
+            assignee_ids: ['UUID de members'],
+            epic_id: 'UUID de epica existente o null',
+            epic_ref: 'indice 0-based del array epics o null',
+            cycle_id: 'UUID de ciclo o null',
+            due_date: 'YYYY-MM-DD o null',
+            subtasks: [
+              {
+                title: 'string (requerido)',
+                status: 'backlog | en_progreso | en_revision | bloqueado | completada',
+                priority: 'baja | media | alta | urgente',
+                assignee_ids: ['UUID de members'],
+              },
+            ],
+          },
+        ],
+      },
+    };
   }
 
   async exportAll() {

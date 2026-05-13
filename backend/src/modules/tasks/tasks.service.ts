@@ -11,12 +11,12 @@ export class TasksService {
     return this.repo.findByAssignee(userId);
   }
 
-  findByProject(projectCode: string) {
-    return this.repo.findByProject(projectCode);
+  findByProject(projectCode: string, userId: string) {
+    return this.repo.findByProject(projectCode, userId);
   }
 
-  findAll(filters: { projectCode?: string; status?: string; cycleId?: string }) {
-    return this.repo.findAllWithFilters(filters);
+  findAll(filters: { projectCode?: string; status?: string; cycleId?: string }, userId: string) {
+    return this.repo.findAllWithFilters(filters, userId);
   }
 
   findRecentByTeam(limit?: number) {

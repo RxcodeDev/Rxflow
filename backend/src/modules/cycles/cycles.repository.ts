@@ -10,7 +10,7 @@ export class CyclesRepository {
     return getPool();
   }
 
-  async findAll(): Promise<CycleSummary[]> {
+  async findAll(userId: string): Promise<CycleSummary[]> {
     const { rows } = await this.pool.query(`
       SELECT
         c.id, c.name, c.number, c.status,
@@ -33,8 +33,24 @@ export class CyclesRepository {
         FROM tasks
         WHERE cycle_id = c.id AND parent_task_id IS NULL
       ) ta ON true
+      WHERE (
+        p.created_by = $1
+        OR EXISTS (
+          SELECT 1 FROM project_members pm
+          WHERE pm.project_id = p.id AND pm.user_id = $1
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM workspace_projects wp
+          JOIN workspaces w ON w.id = wp.workspace_id
+          JOIN licenses l ON l.id = w.license_id
+          LEFT JOIN license_members lm ON lm.license_id = l.id
+          WHERE wp.project_id = p.id
+            AND (l.owner_id = $1 OR lm.user_id = $1)
+        )
+      )
       ORDER BY p.code, c.number DESC
-    `);
+    `, [userId]);
     return rows;
   }
 

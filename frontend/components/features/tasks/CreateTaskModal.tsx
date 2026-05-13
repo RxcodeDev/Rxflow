@@ -9,7 +9,7 @@ import Input from '@/components/ui/Input';
 import TaskForm from '@/components/features/tasks/TaskForm';
 import { useUIState, useUIDispatch } from '@/store/UIContext';
 import { closeCreateModal, bumpProjects } from '@/store/slices/uiSlice';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiPost, ApiError } from '@/lib/api';
 import type { ProjectSummary, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
 import { playSuccess } from '@/hooks/useSound';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -264,13 +264,9 @@ function generateCandidates(name: string): string[] {
   return [...new Set(set)].filter((c) => c.length >= 2);
 }
 
-async function findFreeCode(candidates: string[]): Promise<string | null> {
+function findFreeCode(candidates: string[], existingCodes: Set<string>): string | null {
   for (const candidate of candidates) {
-    try {
-      await apiGet(`/projects/${candidate.toLowerCase()}`);
-      // 200 → taken, try next
-    } catch {
-      // 4xx → free
+    if (!existingCodes.has(candidate.toUpperCase())) {
       return candidate;
     }
   }
@@ -320,31 +316,29 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
     if (identifierTouched) return;
     const candidates = generateCandidates(name);
     if (candidates.length === 0) { setIdentifier(''); return; }
-    let cancelled = false;
+    const existingCodes = new Set(allProjects.map((p) => p.code.trim().toUpperCase()));
     setIdentifierChecking(true);
-    findFreeCode(candidates).then((free) => {
-      if (cancelled) return;
-      setIdentifier(free ?? candidates[0]);
-      setIdentifierError('');
-      setIdentifierChecking(false);
-    });
-    return () => { cancelled = true; setIdentifierChecking(false); };
-  }, [name, identifierTouched]);
+    const free = findFreeCode(candidates, existingCodes);
+    setIdentifier(free ?? candidates[0]);
+    setIdentifierError('');
+    setIdentifierChecking(false);
+  }, [name, identifierTouched, allProjects]);
 
   /* Real-time uniqueness check when user manually edits the identifier */
   useEffect(() => {
     if (!identifierTouched) return;
     if (!debouncedIdentifier || debouncedIdentifier.length < 2) {
       setIdentifierError('');
+      setIdentifierChecking(false);
       return;
     }
     setIdentifierChecking(true);
-    setIdentifierError('');
-    apiGet<ApiWrapped<ProjectSummary>>(`/projects/${debouncedIdentifier.toLowerCase()}`)
-      .then(() => setIdentifierError('Este identificador ya está en uso'))
-      .catch(() => setIdentifierError(''))
-      .finally(() => setIdentifierChecking(false));
-  }, [debouncedIdentifier, identifierTouched]);
+    const exists = allProjects.some(
+      (p) => p.code.trim().toLowerCase() === debouncedIdentifier.trim().toLowerCase(),
+    );
+    setIdentifierError(exists ? 'Este identificador ya está en uso' : '');
+    setIdentifierChecking(false);
+  }, [debouncedIdentifier, identifierTouched, allProjects]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -354,19 +348,13 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
     );
     if (nameTaken) { setNameError('Ya existe un proyecto con ese nombre'); return; }
     if (!identifier.trim()) { setIdentifierError('El identificador es requerido'); return; }
+    const identifierTaken = allProjects.some(
+      (p) => p.code.trim().toLowerCase() === identifier.trim().toLowerCase(),
+    );
+    if (identifierTaken) { setIdentifierError('Este identificador ya está en uso'); return; }
 
-    // Always do a hard check right before submitting (guards against race conditions)
     setSubmitting(true);
     setSubmitError('');
-    try {
-      await apiGet<ApiWrapped<ProjectSummary>>(`/projects/${identifier.toLowerCase()}`);
-      // 200 → already exists
-      setIdentifierError('Este identificador ya está en uso');
-      setSubmitting(false);
-      return;
-    } catch {
-      // 404 → free to use
-    }
 
     try {
       const res = await apiPost<ApiWrapped<{ id: string }>>('/projects', {
@@ -383,7 +371,12 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
       onClose();
       router.push(`/proyectos/${identifier.toLowerCase()}/board`);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Error al crear el proyecto');
+      const msg = err instanceof Error ? err.message : 'Error al crear el proyecto';
+      if (err instanceof ApiError && /projects_code_key|duplicate key|ya existe|already exists/i.test(msg)) {
+        setIdentifierError('Este identificador ya está en uso');
+      } else {
+        setSubmitError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
