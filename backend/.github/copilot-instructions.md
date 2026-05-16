@@ -187,6 +187,8 @@ GET  /auth/me         [requires JwtAuthGuard]    → SafeUser
 Password hashing: `bcrypt` with salt rounds.  
 JWT TTL: `7d` (from `jwtConfig.expiresIn`).
 
+> **Nota:** `POST /auth/register` auto-crea una licencia para el usuario nuevo (nombre = nombre del usuario). `AuthModule` importa `LicensesModule` para inyectar `LicensesService`.
+
 ---
 
 ## Available Endpoints (all require JWT except auth)
@@ -208,9 +210,9 @@ GET  /tasks/mine             ← uses @CurrentUser()
 GET  /tasks?projectCode=&status=&cycleId=
 GET  /tasks/:id
 POST /tasks                  { projectCode, title, priority, status, assigneeId?,
-                               epicId?, cycleId?, parentTaskId?, dueDate? }
+                               epicId?, cycleId?, dueDate? }
 PATCH /tasks/:id             { any task fields }
-DELETE /tasks/:id            ← elimina la tarea y sus subtareas vía cascade en BD
+DELETE /tasks/:id            ← elimina la tarea permanentemente
 POST /tasks/:id/comments     { content }
 POST /tasks/:id/activity     { action, detail }
 
@@ -239,13 +241,16 @@ DELETE /workspaces/:id/members/:userId
 POST /licenses               { name }
 GET  /licenses
 GET  /licenses/:id
-POST /licenses/:id/members   { userId, role? }
+POST /licenses/:id/members           { userId, role? }
 DELETE /licenses/:id/members/:userId
 POST /licenses/:id/assign-workspace   { workspaceId }
 DELETE /licenses/:id/assign-workspace { workspaceId }
 POST /licenses/:id/assign-project     { projectId }
 DELETE /licenses/:id/assign-project   { projectId }
 GET  /licenses/:id/my-workspaces
+GET  /licenses/:id/members                              → LicenseMemberAccess[] (miembros + acceso por workspace/proyecto)
+PATCH /licenses/:id/members/:userId                    { role } → cambia rol en la licencia (solo owner puede; rol del owner principal está bloqueado)
+DELETE /licenses/:id/members/:userId/projects/:projectId → quita acceso al proyecto para ese miembro
 
 GET  /export/full
 GET  /export/markdown
@@ -258,6 +263,12 @@ POST /import/project/:code    { epics?: ImportEpicDto[], tasks?: ImportTaskDto[]
 POST /seed                   ← dev only (throws ForbiddenException in production)
 GET  /seed/status            → { users, projects, tasks, cycles }
 ```
+
+Licenses — DTOs y métodos clave:
+- `UpdateMemberRoleDto` en `modules/licenses/dto/licenses.dto.ts`: `@IsIn(['owner','admin','member']) role: string`
+- `LicensesService.getMembersWithAccess(licenseId)` — devuelve miembros activos con booleanos `has_access` por workspace y proyecto
+- `LicensesService.updateMemberRole(licenseId, userId, role, callerId)` — solo el owner puede cambiar roles; el rol del owner principal está bloqueado
+- `LicensesService.removeMemberProjectAccess(licenseId, userId, projectId)` — elimina `project_members` del usuario para ese proyecto
 
 Users role normalization:
 - `POST /users`, `POST /users/invite` y `PATCH /users/:id` aceptan `userType` + `roleType` (o `user_type` + `role_type`) como formato canonico.
@@ -283,9 +294,11 @@ type SafeUser = Omit<User, 'password_hash'>;
 // users.avatar_url is stored as TEXT to support data URLs/base64 avatars.
 
 // Task (DB row)
+// Nota: parent_task_id existe en la BD como artefacto histórico pero NO se usa en la UI.
+// El modelo activo es: Épica → Tareas (vía epic_id). Las épicas tienen jerarquía propia (parent_epic_id).
 interface Task {
   id: string; sequential_id: number; project_id: string; epic_id: string | null;
-  cycle_id: string | null; parent_task_id: string | null; assignee_id: string | null;
+  cycle_id: string | null; assignee_id: string | null;
   title: string; description: string | null; status: string; priority: string;
   position: number; due_date: Date | null; blocked_reason: string | null;
   created_by: string; created_at: Date; updated_at: Date;
@@ -298,6 +311,23 @@ interface TaskItem {
   priority: string; status: string; epic_name: string | null;
   assignee_initials: string | null; due_date: Date | null;
 }
+```
+
+---
+
+## Modelo de datos — Jerarquía de Épicas y Tareas
+
+- **Épicas** pertenecen a un proyecto. Pueden tener una épica padre (`parent_epic_id`), formando una jerarquía árbol. La API detecta ciclos antes de guardar.
+- **Tareas** son los items de trabajo hoja. Se asocian a una épica (`epic_id`). No existe jerarquía tarea → subtarea.
+- `parent_task_id` existe en la BD y en el módulo de importación como artefacto de migración. No exponer este campo en endpoints nuevos ni en la UI.
+
+```
+Proyecto
+ └── Épica A  (epics.project_id)
+      ├── Épica A.1  (epics.parent_epic_id = A)
+      │    └── Tarea 3  (tasks.epic_id = A.1)
+      ├── Tarea 1  (tasks.epic_id = A)
+      └── Tarea 2  (tasks.epic_id = A)
 ```
 
 ---

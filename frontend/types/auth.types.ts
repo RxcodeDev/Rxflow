@@ -14,6 +14,8 @@ export interface AuthUser {
   email: string;
   name: string;
   role: string;
+  role_type: string | null;
+  licenseRole: 'owner' | 'admin' | 'member';
   initials: string;
   avatar_url: string | null;
   avatar_color: string | null;

@@ -24,6 +24,7 @@
   --c-hover:      #f5f5f5;
   --c-line:       #efefef;
   --c-danger:     #c0392b;
+  --c-success:    #16a34a;
   --c-active-pill:#f0f0f0;
   --c-accent:      #2563eb;
 
@@ -64,6 +65,7 @@
   --c-hover:      #1a1a1a;
   --c-line:       #222;
   --c-danger:     #e05252;
+  --c-success:    #4ade80;
   --c-active-pill:#222;
   --c-accent:      #60a5fa;
   --c-tooltip-bg: #e0e0e0;

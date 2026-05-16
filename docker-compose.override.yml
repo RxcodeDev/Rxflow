@@ -1,0 +1,29 @@
+# Activo automáticamente con "docker compose up" en desarrollo.
+# Para producción usa: docker compose -f docker-compose.yml up -d
+
+services:
+  backend:
+    build:
+      target: builder
+    command: ["npm", "run", "start:dev"]
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  frontend:
+    build:
+      target: deps
+    command: npm run dev
+    ports:
+      - "${FRONTEND_PORT:-3001}:3001"
+    volumes:
+      - ./frontend:/app:ro
+      - /app/node_modules
+      - /app/.next
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}

@@ -3,23 +3,16 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import bcrypt from 'bcrypt';
 import { UsersRepository } from './users.repository';
 import { MailService } from '../../shared/mail/mail.service';
 
 const USER_TYPES = ['member', 'owner', 'admin'] as const;
-const ROLE_TYPES = [
-  'Tech Lead',
-  'Backend Dev',
-  'Frontend Dev',
-  'Full Stack Dev',
-  'Designer',
-  'Product Manager',
-] as const;
 
 type UserType = (typeof USER_TYPES)[number];
-type RoleType = (typeof ROLE_TYPES)[number];
+type RoleType = string;
 
 type RoleInput = {
   role?: string;
@@ -208,13 +201,23 @@ export class UsersService {
     await this.repo.changePassword(id, newHash);
   }
 
+  async adminResetPassword(callerId: string, targetId: string, newPassword: string) {
+    const allowed = await this.repo.isLicenseOwnerOrAdmin(callerId);
+    if (!allowed)
+      throw new ForbiddenException('Solo owners y admins pueden resetear contraseñas');
+    if (!newPassword || newPassword.length < 6)
+      throw new BadRequestException('La contraseña debe tener al menos 6 caracteres');
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await this.repo.changePassword(targetId, newHash);
+  }
+
   async updatePresence(id: string, status: 'online' | 'away' | 'offline'): Promise<void> {
     await this.repo.updatePresence(id, status);
   }
 
   private normalizeRoleInput(input: RoleInput): { userType: UserType; roleType: RoleType | null; storedRole: string } {
     const rawUserType = (input.userType ?? input.user_type)?.trim();
-    const rawRoleType = (input.roleType ?? input.role_type)?.trim();
+    const rawRoleType = (input.roleType ?? input.role_type)?.trim() || null;
 
     if (rawUserType !== undefined || rawRoleType !== undefined) {
       const userType = (rawUserType || 'member').toLowerCase();
@@ -224,20 +227,10 @@ export class UsersService {
         );
       }
 
-      const roleType = rawRoleType
-        ? ROLE_TYPES.find((r) => r === rawRoleType) ?? null
-        : null;
-
-      if (rawRoleType && !roleType) {
-        throw new BadRequestException(
-          `Tipo de rol invalido. Valores permitidos: ${ROLE_TYPES.join(', ')}`,
-        );
-      }
-
       return {
         userType: userType as UserType,
-        roleType,
-        storedRole: roleType ?? userType,
+        roleType: rawRoleType,
+        storedRole: rawRoleType ?? userType,
       };
     }
 
@@ -258,14 +251,8 @@ export class UsersService {
       return { userType: lc as UserType, roleType: null, storedRole: lc };
     }
 
-    const roleType = ROLE_TYPES.find((r) => r === rawRole) ?? null;
-    if (roleType) {
-      return { userType: 'member', roleType, storedRole: roleType };
-    }
-
-    throw new BadRequestException(
-      `Rol invalido. Usa role legacy (${USER_TYPES.join(', ')} o uno de rol funcional) o envia userType/roleType.`,
-    );
+    // Accept any free-form role string (no enum restriction)
+    return { userType: 'member', roleType: rawRole, storedRole: rawRole };
   }
 
   private parseNormalizedUserFields(
@@ -278,25 +265,21 @@ export class UsersService {
       ? (normalizedType as UserType)
       : null;
 
-    const parsedRoleType = roleType?.trim()
-      ? ROLE_TYPES.find((r) => r === roleType.trim()) ?? null
-      : null;
+    // Accept any free-form role_type stored in DB
+    const parsedRoleType = roleType?.trim() || null;
 
     if (parsedUserType) {
       return { userType: parsedUserType, roleType: parsedRoleType };
     }
 
     const rawLegacy = legacyRole?.trim();
-    if (!rawLegacy) return { userType: 'member', roleType: null };
+    if (!rawLegacy) return { userType: 'member', roleType: parsedRoleType };
 
     const legacyType = rawLegacy.toLowerCase();
     if (USER_TYPES.includes(legacyType as UserType)) {
-      return { userType: legacyType as UserType, roleType: null };
+      return { userType: legacyType as UserType, roleType: parsedRoleType };
     }
 
-    const legacyRoleType = ROLE_TYPES.find((r) => r === rawLegacy) ?? null;
-    if (legacyRoleType) return { userType: 'member', roleType: legacyRoleType };
-
-    return { userType: 'member', roleType: null };
+    return { userType: 'member', roleType: parsedRoleType ?? rawLegacy };
   }
 }

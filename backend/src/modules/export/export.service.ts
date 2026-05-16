@@ -118,20 +118,11 @@ export class ExportService {
     lines.push('---');
     lines.push('## ✅ Tareas');
     lines.push('');
-    const rootTasks = (tasks as any[]).filter((t: any) => !t.parent_task_id);
-    const subTasks  = (tasks as any[]).filter((t: any) =>  t.parent_task_id);
-    const subByParent = new Map<string, any[]>();
-    for (const st of subTasks) {
-      const arr = subByParent.get(st.parent_task_id) ?? [];
-      arr.push(st);
-      subByParent.set(st.parent_task_id, arr);
-    }
-
-    for (const t of rootTasks) {
-      const projName    = projectMap.get(t.project_code) ?? t.project_code ?? '—';
-      const epicName    = t.epic_id ? epicMap.get(t.epic_id) ?? '—' : null;
-      const assignees   = (t.assignees as any[]).map((a: any) => a.name).join(', ') || 'Sin asignar';
-      const comments    = (t.comments as any[]) as any[];
+    for (const t of tasks as any[]) {
+      const projName  = projectMap.get(t.project_code) ?? t.project_code ?? '—';
+      const epicName  = t.epic_id ? epicMap.get(t.epic_id) ?? '—' : null;
+      const assignees = (t.assignees as any[]).map((a: any) => a.name).join(', ') || 'Sin asignar';
+      const comments  = (t.comments as any[]) as any[];
       lines.push(`### ${t.title}`);
       if (t.description) lines.push(`> ${t.description}`);
       lines.push(`- **Proyecto:** ${projName}`);
@@ -144,14 +135,6 @@ export class ExportService {
         for (const c of comments) {
           const author = userMap.get(c.author_id) ?? 'Desconocido';
           lines.push(`  - *${author}:* ${c.content}`);
-        }
-      }
-      const children = subByParent.get(t.id) ?? [];
-      if (children.length) {
-        lines.push(`- **Subtareas:**`);
-        for (const sub of children) {
-          const subAssignees = (sub.assignees as any[]).map((a: any) => a.name).join(', ') || 'Sin asignar';
-          lines.push(`  - **${sub.title}** [${sub.status}] — ${subAssignees}`);
         }
       }
       lines.push('');
@@ -242,7 +225,7 @@ export class ExportService {
       this.pool.query(
         `SELECT
            t.id, t.title, t.description, t.status, t.priority,
-           t.parent_task_id, t.epic_id, t.cycle_id, t.due_date, t.created_at,
+           t.epic_id, t.cycle_id, t.due_date, t.created_at,
            COALESCE(
              json_agg(DISTINCT jsonb_build_object('user_id', ta.user_id, 'name', u.name))
              FILTER (WHERE ta.user_id IS NOT NULL),
@@ -369,14 +352,6 @@ export class ExportService {
             epic_ref: 'indice 0-based del array epics o null',
             cycle_id: 'UUID de ciclo o null',
             due_date: 'YYYY-MM-DD o null',
-            subtasks: [
-              {
-                title: 'string (requerido)',
-                status: 'backlog | en_progreso | en_revision | bloqueado | completada',
-                priority: 'baja | media | alta | urgente',
-                assignee_ids: ['UUID de members'],
-              },
-            ],
           },
         ],
       },
@@ -472,7 +447,6 @@ export class ExportService {
         t.id, t.title, t.description, t.status, t.priority,
         t.project_id,
         p.code  AS project_code,
-        t.parent_task_id,
         t.assignee_id,
         t.created_by,
         t.epic_id,

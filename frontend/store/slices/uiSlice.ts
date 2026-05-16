@@ -4,7 +4,7 @@ export interface UiState {
 
   // Modal crear tarea/proyecto
   isCreateModalOpen: boolean;
-  createModalContext: 'task' | 'subtask' | 'project' | 'workspace' | null;
+  createModalContext: 'task' | 'project' | 'workspace' | null;
 
   // Drawer de detalle
   isDrawerOpen: boolean;
@@ -31,7 +31,7 @@ export const initialUiState: UiState = {
 
 /* ── Action types ───────────────────────────────────── */
 export type UiAction =
-  | { type: 'ui/openCreateModal'; payload: 'task' | 'subtask' | 'project' | 'workspace' }
+  | { type: 'ui/openCreateModal'; payload: 'task' | 'project' | 'workspace' }
   | { type: 'ui/closeCreateModal' }
   | { type: 'ui/openDrawer'; payload: { taskId: string; projectId: string } }
   | { type: 'ui/closeDrawer' }
@@ -40,7 +40,7 @@ export type UiAction =
 
 /* ── Action creators ────────────────────────────────── */
 export const openCreateModal = (
-  context: 'task' | 'subtask' | 'project' | 'workspace',
+  context: 'task' | 'project' | 'workspace',
 ): UiAction => ({ type: 'ui/openCreateModal', payload: context });
 
 export const closeCreateModal = (): UiAction => ({ type: 'ui/closeCreateModal' });

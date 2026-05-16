@@ -503,7 +503,6 @@ function ProjectForm({ onClose }: { onClose: () => void }) {
 /* ── Main export ─────────────────────────────────────── */
 const MODAL_TITLES = {
   task: 'Nueva tarea',
-  subtask: 'Nueva subtarea',
   project: 'Nuevo proyecto',
   workspace: 'Nuevo espacio de trabajo',
 } as const;
@@ -515,7 +514,7 @@ export default function CreateTaskModal() {
 
   const handleClose = () => { dispatch(closeCreateModal()); setWide(false); };
 
-  const expandBtn = (createModalContext === 'task' || createModalContext === 'subtask') ? (
+  const expandBtn = createModalContext === 'task' ? (
     <button
       type="button"
       onClick={() => setWide(v => !v)}
@@ -549,7 +548,7 @@ export default function CreateTaskModal() {
         <WorkspaceForm onClose={handleClose} />
       ) : createModalContext === 'project' ? (
         <ProjectForm onClose={handleClose} />
-      ) : createModalContext === 'task' || createModalContext === 'subtask' ? (
+      ) : createModalContext === 'task' ? (
         <TaskForm context={createModalContext} onCancel={handleClose} submitLabel="Crear tarea" />
       ) : null}
     </Modal>

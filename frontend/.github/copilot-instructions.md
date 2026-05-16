@@ -26,7 +26,7 @@ app/
     proyectos/[id]/cycles/   ← Cycles del proyecto
     proyectos/[id]/tareas/[taskId]/  ← Detalle de tarea
     cycles/page.tsx          ← Cycles globales agrupados por estado ('use client')
-    miembros/page.tsx        ← Tabla+cards de miembros ('use client', modal con select separado para tipo de usuario y tipo de rol via SearchSelect)
+    miembros/page.tsx        ← Gestión de miembros de licencia — panel split 100dvh (lista izquierda fija + panel derecho detalle), control de acceso por workspace/proyecto por miembro, modal de 2 pasos para añadir miembro; estado `noLicense` muestra mensaje de contacto al administrador
     espacios/page.tsx        ← Workspaces ('use client')
     perfil/page.tsx          ← Perfil de usuario ('use client')
     preferencias/page.tsx    ← Preferencias (Server Component, visual only)
@@ -44,7 +44,7 @@ components/
   features/
     auth/                    ← LoginForm, RegisterForm
     tasks/
-      CreateTaskModal.tsx    ← Global modal — NEVER mount in individual pages
+      CreateTaskModal.tsx    ← Global modal — NEVER mount in individual pages; creates tasks optionally linked to an epic
       TaskDrawer.tsx         ← Global drawer — NEVER mount in individual pages; header + properties fixed, center content scroll, comment composer fixed abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
     projects/                ← Project-related feature components (incluye ImportProjectModal con previsualizacion obligatoria previa a importar)
     users/                   ← UserTable, UserForm
@@ -63,7 +63,9 @@ lib/
 types/
   api.types.ts               ← ApiWrapped<T>, ProjectSummary, TaskItem, TaskAssignee,
                                 CycleSummary, MemberItem, NotificationItem, EpicItem,
-                                WorkspaceSummary, WorkspaceMember, PaginatedResponse
+                                WorkspaceSummary, WorkspaceMember, PaginatedResponse,
+                                License, WikiPageSummary, WikiPageDetail, WikiTreeNode,
+                                LicenseMemberAccess, LicenseMemberAccessWorkspace, LicenseMemberAccessProject
 hooks/
   useAuth.ts
   useDebounce.ts
@@ -184,6 +186,17 @@ WorkspaceSummary {
 }
 
 PaginatedResponse<T> { data: T[], total, page, limit }
+
+License { id, name, owner_id, plan, created_at, updated_at }
+
+LicenseMemberAccessWorkspace { id, name, color, icon, has_access: boolean }
+LicenseMemberAccessProject   { id, code, name, has_access: boolean }
+LicenseMemberAccess {
+  id, name, email, initials, avatar_url, avatar_color,
+  presence_status, last_seen_at, role_type, license_role,
+  workspaces: LicenseMemberAccessWorkspace[],
+  projects: LicenseMemberAccessProject[]
+}
 ```
 
 ---
@@ -198,7 +211,7 @@ PaginatedResponse<T> { data: T[], total, page, limit }
   loading: boolean;
   sidebarOpen: boolean;
   isCreateModalOpen: boolean;
-  createModalContext: 'task' | 'subtask' | 'project' | 'workspace' | null;
+  createModalContext: 'task' | 'project' | 'workspace' | null;
   isDrawerOpen: boolean;
   activeTaskId: string | null;
   activeProjectId: string | null;
@@ -206,7 +219,7 @@ PaginatedResponse<T> { data: T[], total, page, limit }
 }
 
 // Action creators
-openCreateModal(context: 'task'|'subtask'|'project'|'workspace')
+openCreateModal(context: 'task'|'project'|'workspace')
 closeCreateModal()
 openDrawer({ taskId: string, projectId: string })
 closeDrawer()
@@ -217,7 +230,7 @@ Usage in any `'use client'` component:
 ```ts
 const dispatch = useUIDispatch();
 const state = useUIState();
-dispatch(openCreateModal('task'));
+dispatch(openCreateModal('task'));   // 'task' | 'project' | 'workspace'
 dispatch(openDrawer({ taskId: 'ENG-12', projectId: 'ENG' }));
 dispatch(bumpProjects());
 ```
@@ -458,9 +471,12 @@ DELETE /workspaces/:id/members/:userId
 POST /licenses               { name }
 GET  /licenses               → License[]
 GET  /licenses/:id           → License
-GET  /licenses/:id/my-workspaces → ApiWrapped<WorkspaceSummary[]>
-POST /licenses/:id/members   { userId, role? }
+GET  /licenses/:id/my-workspaces                          → ApiWrapped<WorkspaceSummary[]>
+POST /licenses/:id/members                               { userId, role? }
 DELETE /licenses/:id/members/:userId
+GET  /licenses/:id/members                               → ApiWrapped<LicenseMemberAccess[]>
+PATCH /licenses/:id/members/:userId                      { role }  → cambia rol (solo owner)
+DELETE /licenses/:id/members/:userId/projects/:projectId → quita acceso al proyecto
 
 POST /seed                   → populate demo data (dev only)
 GET  /seed/status            → { users, projects, tasks, cycles }
@@ -468,7 +484,25 @@ GET  /seed/status            → { users, projects, tasks, cycles }
 
 ---
 
+## Modelo de datos — Épicas y Tareas
+
+- **Épicas** son entidades de agrupación con jerarquía propia (`parent_epic_id`). Pertenecen a un proyecto.
+- **Tareas** son los items de trabajo hoja. Se asocian a una épica (`epic_id`). Las tareas son conceptualmente las "subtareas" de su épica.
+- **No existe subtarea de tarea**: `parent_task_id` existe en la BD como artefacto histórico pero **no se usa** en la UI. Nunca crear UI ni lógica para crear subtareas de tareas.
+- El contexto `'subtask'` en `openCreateModal` está obsoleto — no usarlo.
+
+```
+Proyecto
+ └── Épica A
+      ├── Épica A.1  (épica hija, vía parent_epic_id)
+      │    └── Tarea 3
+      ├── Tarea 1
+      └── Tarea 2
+```
+
+---
+
 ## Pending Work
 
-- `TaskDrawer` — still uses DEMO_TASK / DEMO_SUBTASKS / DEMO_COMMENTS (needs real API)
+- `TaskDrawer` — still uses DEMO_TASK / DEMO_COMMENTS (needs real API)
 - `CreateTaskModal` — PROJECTS/EPICS/ASSIGNEES still hardcoded (needs real API)

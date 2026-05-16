@@ -18,7 +18,7 @@ const PROJECT_LATERAL_JOINS = `
   LEFT JOIN LATERAL (
     SELECT COUNT(*)                                        AS total,
            COUNT(*) FILTER (WHERE status = 'completada')  AS done
-    FROM tasks WHERE project_id = p.id AND parent_task_id IS NULL
+    FROM tasks WHERE project_id = p.id
   ) ta ON true
   LEFT JOIN LATERAL (
     SELECT json_agg(json_build_object('initials', u.initials, 'name', u.name) ORDER BY u.name) AS data

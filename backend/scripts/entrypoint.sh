@@ -45,4 +45,8 @@ echo "✓ Prisma migrations done"
 
 # ── Start app ─────────────────────────────────────────────────────────────
 echo "▶ Starting NestJS..."
-exec node dist/main
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+else
+  exec node dist/main
+fi

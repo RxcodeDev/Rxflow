@@ -31,7 +31,7 @@ export class CyclesRepository {
         SELECT COUNT(*)                                          AS total,
                COUNT(*) FILTER (WHERE status = 'completada')   AS done
         FROM tasks
-        WHERE cycle_id = c.id AND parent_task_id IS NULL
+        WHERE cycle_id = c.id
       ) ta ON true
       WHERE (
         p.created_by = $1
@@ -75,7 +75,7 @@ export class CyclesRepository {
         SELECT COUNT(*)                                          AS total,
                COUNT(*) FILTER (WHERE status = 'completada')   AS done
         FROM tasks
-        WHERE cycle_id = c.id AND parent_task_id IS NULL
+        WHERE cycle_id = c.id
       ) ta ON true
       WHERE c.id = $1
     `, [id]);
@@ -126,7 +126,7 @@ export class CyclesRepository {
   async addEpicTasks(cycleId: string, epicId: string): Promise<void> {
     await this.pool.query(
       `UPDATE tasks SET cycle_id = $1, updated_at = NOW()
-       WHERE epic_id = $2 AND parent_task_id IS NULL`,
+       WHERE epic_id = $2`,
       [cycleId, epicId],
     );
   }

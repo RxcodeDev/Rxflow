@@ -38,7 +38,6 @@ interface TaskDetail {
   epic_id: string | null;
   epic_name: string | null;
   cycle_id: string | null;
-  subtasks: { id: string; identifier: string; title: string; status: string }[];
   comments: { id: string; body: string; created_at: string; author_id: string; initials: string; name: string; avatar_url: string | null; avatar_color: string | null }[];
   activity: { id: string; action: string; created_at: string; initials: string; name: string; avatar_url: string | null; avatar_color: string | null }[];
 }
@@ -1174,7 +1173,7 @@ export default function TaskDrawer() {
       <ConfirmModal
         open={deleteOpen}
         title="Eliminar tarea"
-        message={deleting ? 'Eliminando tarea…' : 'Se eliminará la tarea y sus subtareas permanentemente. Esta acción no se puede deshacer.'}
+        message={deleting ? 'Eliminando tarea…' : 'Se eliminará la tarea permanentemente. Esta acción no se puede deshacer.'}
         confirmLabel={deleting ? 'Eliminando...' : 'Eliminar'}
         onConfirm={handleDeleteTask}
         onCancel={() => { if (!deleting) setDeleteOpen(false); }}

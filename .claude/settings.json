@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(magick public/icon.svg -resize 512x512 app/icon.png)",
+      "Bash(magick public/icon.svg -resize 32x32 app/favicon_32.png)",
+      "Bash(magick public/icon.svg -resize 16x16 app/favicon_16.png)",
+      "Bash(magick app/favicon_32.png app/favicon_16.png app/favicon.ico)",
+      "Bash(magick -background none icon.svg -resize 512x512 favicon.png)",
+      "Bash(magick -background none public/icon.svg -resize 512x512 app/icon.png)",
+      "Bash(magick -background none public/icon.svg -resize 32x32 tmp32.png)",
+      "Bash(magick -background none public/icon.svg -resize 16x16 tmp16.png)",
+      "Bash(magick tmp32.png tmp16.png app/favicon.ico)",
+      "Bash(magick -background none public/icon.svg -resize 512x512 public/favicon.png)"
+    ]
+  }
+}

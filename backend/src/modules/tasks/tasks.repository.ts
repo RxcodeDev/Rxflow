@@ -53,8 +53,7 @@ export class TasksRepository {
   async findByAssignee(userId: string): Promise<TaskItem[]> {
     const tasks = await this.prisma.task.findMany({
       where: {
-        parent_task_id: null,
-        taskAssignees:  { some: { user_id: userId } },
+        taskAssignees: { some: { user_id: userId } },
       },
       include: TASK_LIST_INCLUDE,
     });
@@ -69,7 +68,6 @@ export class TasksRepository {
   async findByProject(projectCode: string, userId: string): Promise<TaskItem[]> {
     const tasks = await this.prisma.task.findMany({
       where: {
-        parent_task_id: null,
         project: {
           code: { equals: projectCode, mode: 'insensitive' },
           OR: [
@@ -102,7 +100,6 @@ export class TasksRepository {
     cycleId?:     string;
   }, userId: string): Promise<TaskItem[]> {
     const where: Prisma.TaskWhereInput = {
-      parent_task_id: null,
       project: {
         OR: [
           { created_by: userId },
@@ -142,7 +139,6 @@ export class TasksRepository {
 
   async findRecentByTeam(limit = 20): Promise<TaskItem[]> {
     const tasks = await this.prisma.task.findMany({
-      where:   { parent_task_id: null },
       include: TASK_LIST_INCLUDE,
       orderBy: { updated_at: 'desc' },
       take:    limit,
@@ -161,7 +157,6 @@ export class TasksRepository {
     assigneeId?:   string | null;
     epicId?:       string | null;
     cycleId?:      string | null;
-    parentTaskId?: string | null;
     dueDate?:      string | null;
     createdBy:     string;
   }): Promise<TaskItem> {
@@ -192,7 +187,6 @@ export class TasksRepository {
           assignee_id:    primaryId,
           epic_id:        dto.epicId    || null,
           cycle_id:       dto.cycleId   || null,
-          parent_task_id: dto.parentTaskId || null,
           due_date:       dto.dueDate ? new Date(dto.dueDate) : null,
           created_by:     dto.createdBy,
           ...(ids.length && {
@@ -371,10 +365,6 @@ export class TasksRepository {
           include: { user: { select: { id: true, name: true, initials: true, avatar_color: true, avatar_url: true } } },
           orderBy: { assigned_at: 'asc' },
         },
-        subtasks: {
-          include: { project: { select: { code: true } } },
-          orderBy: { sequential_id: 'asc' },
-        },
         comments: {
           include: { author: { select: { initials: true, name: true, avatar_url: true, avatar_color: true } } },
           orderBy: { created_at: 'asc' },
@@ -407,13 +397,6 @@ export class TasksRepository {
         initials:     a.user.initials,
         avatar_color: a.user.avatar_color,
         avatar_url:   a.user.avatar_url,
-      })),
-      subtasks: task.subtasks.map(s => ({
-        id:            s.id,
-        sequential_id: s.sequential_id,
-        identifier:    `${s.project.code}-${s.sequential_id}`,
-        title:         s.title,
-        status:        s.status,
       })),
       comments: task.comments.map(c => ({
         id:           c.id,

@@ -1,14 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { getPool } from '../../config/database.config';
 
-export interface ImportSubtaskDto {
-  title: string;
-  description?: string | null;
-  status?: string;
-  priority?: string;
-  assignee_ids?: string[];
-}
-
 export interface ImportTaskDto {
   title: string;
   description?: string | null;
@@ -19,7 +11,6 @@ export interface ImportTaskDto {
   epic_ref?: number | null;
   cycle_id?: string | null;
   due_date?: string | null;
-  subtasks?: ImportSubtaskDto[];
 }
 
 export interface ImportEpicDto {
@@ -44,14 +35,6 @@ interface PlannedEpic {
   parent_epic_ref: number | null;
 }
 
-interface PlannedSubtask {
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  assignee_ids: string[];
-}
-
 interface PlannedTask {
   index: number;
   title: string;
@@ -63,7 +46,6 @@ interface PlannedTask {
   epic_ref: number | null;
   cycle_id: string | null;
   due_date: string | null;
-  subtasks: PlannedSubtask[];
 }
 
 interface ImportPlan {
@@ -158,10 +140,7 @@ export class ImportService {
     const existingCycleIds = new Set(cycleRows.map(r => r.id));
 
     const requestedAssigneeIds = normalizeIds(
-      tasksInput.flatMap((task) => [
-        ...(task.assignee_ids ?? []),
-        ...((task.subtasks ?? []).flatMap(st => st.assignee_ids ?? [])),
-      ]),
+      tasksInput.flatMap((task) => task.assignee_ids ?? []),
     );
 
     const requestedAssigneeUuidIds = requestedAssigneeIds.filter(id => UUID_V4ISH_REGEX.test(id));
@@ -271,51 +250,6 @@ export class ImportService {
         }
       }
 
-      if (task.subtasks != null && !Array.isArray(task.subtasks)) {
-        errors.push(`tasks[${i}]: subtasks debe ser un array`);
-      }
-
-      const subtasksInput = Array.isArray(task.subtasks) ? task.subtasks : [];
-      const plannedSubtasks: PlannedSubtask[] = [];
-
-      for (let j = 0; j < subtasksInput.length; j++) {
-        const subtask = subtasksInput[j];
-
-        if (!subtask.title?.trim()) {
-          errors.push(`tasks[${i}].subtasks[${j}]: title es requerido`);
-        }
-
-        const rawSubStatus = (subtask.status ?? 'backlog').toLowerCase();
-        if (!VALID_TASK_STATUSES.has(rawSubStatus)) {
-          errors.push(`tasks[${i}].subtasks[${j}]: status invalido (${subtask.status ?? 'undefined'})`);
-        }
-        const subStatus = normalizeTaskStatus(rawSubStatus);
-
-        const subPriority = (subtask.priority ?? 'media').toLowerCase();
-        if (!VALID_PRIORITIES.has(subPriority)) {
-          errors.push(`tasks[${i}].subtasks[${j}]: priority invalido (${subtask.priority ?? 'undefined'})`);
-        }
-
-        const subAssigneeIds = normalizeIds(subtask.assignee_ids);
-        for (const assigneeId of subAssigneeIds) {
-          if (!UUID_V4ISH_REGEX.test(assigneeId)) {
-            errors.push(`tasks[${i}].subtasks[${j}]: assignee_id invalido (${assigneeId})`);
-            continue;
-          }
-          if (!existingUserIds.has(assigneeId)) {
-            errors.push(`tasks[${i}].subtasks[${j}]: assignee_id no existe (${assigneeId})`);
-          }
-        }
-
-        plannedSubtasks.push({
-          title: subtask.title?.trim() ?? '',
-          description: subtask.description ?? null,
-          status: subStatus,
-          priority: subPriority,
-          assignee_ids: subAssigneeIds,
-        });
-      }
-
       plannedTasks.push({
         index: i,
         title: task.title?.trim() ?? '',
@@ -327,7 +261,6 @@ export class ImportService {
         epic_ref: task.epic_ref ?? null,
         cycle_id: task.cycle_id ?? null,
         due_date: dueDate,
-        subtasks: plannedSubtasks,
       });
     }
 
@@ -350,7 +283,6 @@ export class ImportService {
       summary: {
         epics: plan.epics.length,
         tasks: plan.tasks.length,
-        subtasks: plan.tasks.reduce((acc, t) => acc + t.subtasks.length, 0),
       },
       normalized_payload: {
         epics: plan.epics.map(epic => ({
@@ -370,7 +302,6 @@ export class ImportService {
           epic_ref: task.epic_ref,
           cycle_id: task.cycle_id,
           due_date: task.due_date,
-          subtasks: task.subtasks,
         })),
       },
     };
@@ -421,9 +352,9 @@ export class ImportService {
       const { rows } = await this.pool.query(
         `INSERT INTO tasks
            (id, sequential_id, title, description, status, priority,
-            project_id, epic_id, cycle_id, parent_task_id, due_date, assignee_id, created_by, created_at, updated_at)
+            project_id, epic_id, cycle_id, due_date, assignee_id, created_by, created_at, updated_at)
          VALUES
-           (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NULL, $9, $10, $11, NOW(), NOW())
+           (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
          RETURNING id`,
         [
           seqRows[0].next_id,
@@ -440,7 +371,7 @@ export class ImportService {
         ],
       );
 
-      const parentTaskId: string = rows[0].id;
+      const taskId: string = rows[0].id;
       createdTasks++;
 
       for (const assigneeId of taskAssigneeIds) {
@@ -448,50 +379,8 @@ export class ImportService {
           `INSERT INTO task_assignees (task_id, user_id, assigned_at)
            VALUES ($1, $2, NOW())
            ON CONFLICT DO NOTHING`,
-          [parentTaskId, assigneeId],
+          [taskId, assigneeId],
         ).catch(() => undefined);
-      }
-
-      for (const subtask of task.subtasks) {
-        const subtaskAssigneeIds = subtask.assignee_ids;
-        const subtaskPrimaryAssigneeId = subtaskAssigneeIds[0] ?? null;
-
-        const { rows: subSeqRows } = await this.pool.query(
-          'SELECT COALESCE(MAX(sequential_id), 0) + 1 AS next_id FROM tasks WHERE project_id = $1',
-          [projectId],
-        );
-
-        const { rows: subRows } = await this.pool.query(
-          `INSERT INTO tasks
-             (id, sequential_id, title, description, status, priority,
-              project_id, epic_id, parent_task_id, assignee_id, created_by, created_at, updated_at)
-           VALUES
-             (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-           RETURNING id`,
-          [
-            subSeqRows[0].next_id,
-            subtask.title,
-            subtask.description,
-            subtask.status,
-            subtask.priority,
-            projectId,
-            epicId,
-            parentTaskId,
-            subtaskPrimaryAssigneeId,
-            userId,
-          ],
-        );
-
-        createdTasks++;
-
-        for (const assigneeId of subtaskAssigneeIds) {
-          await this.pool.query(
-            `INSERT INTO task_assignees (task_id, user_id, assigned_at)
-             VALUES ($1, $2, NOW())
-             ON CONFLICT DO NOTHING`,
-            [subRows[0].id, assigneeId],
-          ).catch(() => undefined);
-        }
       }
     }
 

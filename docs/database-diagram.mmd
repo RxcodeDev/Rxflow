@@ -1,0 +1,243 @@
+erDiagram
+
+    users {
+        uuid        id PK
+        varchar     name
+        varchar     email UK
+        varchar     password_hash
+        varchar     role
+        varchar     user_type
+        varchar     role_type
+        varchar     initials
+        text        avatar_url
+        varchar     avatar_color
+        text        presence_status
+        timestamptz last_seen_at
+        boolean     is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    licenses {
+        uuid        id PK
+        varchar     name
+        uuid        owner_id FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    license_members {
+        uuid        license_id FK
+        uuid        user_id FK
+        varchar     role
+        timestamptz joined_at
+    }
+
+    workspaces {
+        uuid        id PK
+        uuid        license_id FK
+        text        name
+        text        description
+        text        color
+        text        icon
+        uuid        created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    workspace_members {
+        uuid        workspace_id FK
+        uuid        user_id FK
+        timestamptz added_at
+    }
+
+    workspace_projects {
+        uuid        workspace_id FK
+        uuid        project_id FK
+        timestamptz added_at
+    }
+
+    projects {
+        uuid        id PK
+        varchar     code UK
+        varchar     name
+        text        description
+        text        methodology
+        text        status
+        jsonb       extra_views
+        uuid        created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    project_members {
+        uuid    project_id FK
+        uuid    user_id FK
+        varchar role
+    }
+
+    project_task_sequences {
+        uuid    project_id PK
+        integer last_seq
+    }
+
+    epics {
+        uuid        id PK
+        uuid        project_id FK
+        varchar     name
+        text        description
+        varchar     status
+        uuid        parent_epic_id FK
+        uuid        created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    cycles {
+        uuid        id PK
+        uuid        project_id FK
+        varchar     name
+        integer     number
+        varchar     status
+        date        start_date
+        date        end_date
+        integer     scope_pct
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    tasks {
+        uuid        id PK
+        integer     sequential_id
+        uuid        project_id FK
+        uuid        epic_id FK
+        uuid        cycle_id FK
+        uuid        assignee_id FK
+        varchar     title
+        text        description
+        text        status
+        text        priority
+        text        blocked_reason
+        integer     position
+        date        due_date
+        uuid        created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    task_assignees {
+        uuid        task_id FK
+        uuid        user_id FK
+        timestamptz assigned_at
+    }
+
+    comments {
+        uuid        id PK
+        uuid        task_id FK
+        uuid        author_id FK
+        text        body
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    activity_log {
+        uuid        id PK
+        uuid        task_id FK
+        uuid        project_id FK
+        uuid        user_id FK
+        varchar     action
+        jsonb       payload
+        timestamptz created_at
+    }
+
+    notifications {
+        uuid        id PK
+        uuid        recipient_id FK
+        uuid        sender_id FK
+        varchar     type
+        uuid        task_id FK
+        uuid        project_id FK
+        varchar     message
+        boolean     read
+        timestamptz created_at
+    }
+
+    user_notification_prefs {
+        uuid        user_id PK
+        boolean     mentions
+        boolean     assignments
+        boolean     comments
+        boolean     updates
+        timestamptz updated_at
+    }
+
+    wiki_pages {
+        uuid        id PK
+        uuid        license_id FK
+        uuid        workspace_id
+        varchar     title
+        varchar     slug
+        jsonb       content
+        varchar     icon
+        varchar     project_code
+        uuid        epic_id
+        uuid        task_id
+        uuid        parent_page_id FK
+        boolean     is_archived
+        uuid        created_by
+        uuid        updated_by
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    %% Tenants
+    users ||--o{ licenses : "owner_id"
+    licenses ||--o{ license_members : "license_id"
+    users ||--o{ license_members : "user_id"
+
+    %% Workspaces
+    licenses ||--o{ workspaces : "license_id"
+    users o|--o{ workspaces : "created_by"
+    workspaces ||--o{ workspace_members : "workspace_id"
+    users ||--o{ workspace_members : "user_id"
+    workspaces ||--o{ workspace_projects : "workspace_id"
+    projects ||--o{ workspace_projects : "project_id"
+
+    %% Proyectos
+    users o|--o{ projects : "created_by"
+    projects ||--o{ project_members : "project_id"
+    users ||--o{ project_members : "user_id"
+    projects ||--|| project_task_sequences : "project_id"
+
+    %% Epicas y ciclos
+    projects ||--o{ epics : "project_id"
+    epics o|--o{ epics : "parent_epic_id"
+    users ||--o{ epics : "created_by"
+    projects ||--o{ cycles : "project_id"
+
+    %% Tareas
+    projects ||--o{ tasks : "project_id"
+    epics o|--o{ tasks : "epic_id"
+    cycles o|--o{ tasks : "cycle_id"
+    users o|--o{ tasks : "assignee_id"
+    users ||--o{ tasks : "created_by"
+    tasks ||--o{ task_assignees : "task_id"
+    users ||--o{ task_assignees : "user_id"
+
+    %% Comentarios y actividad
+    tasks ||--o{ comments : "task_id"
+    users ||--o{ comments : "author_id"
+    tasks ||--o{ activity_log : "task_id"
+    projects o|--o{ activity_log : "project_id"
+    users ||--o{ activity_log : "user_id"
+
+    %% Notificaciones
+    users ||--o{ notifications : "recipient_id"
+    users ||--o{ notifications : "sender_id"
+    tasks o|--o{ notifications : "task_id"
+    projects o|--o{ notifications : "project_id"
+    users ||--|| user_notification_prefs : "user_id"
+
+    %% Wiki
+    licenses o|--o{ wiki_pages : "license_id"
+    wiki_pages o|--o{ wiki_pages : "parent_page_id"

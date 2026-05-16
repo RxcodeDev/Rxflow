@@ -15,6 +15,7 @@ export interface CreateUserData {
   role?: string;
   user_type?: string;
   role_type?: string | null;
+  avatar_color?: string | null;
 }
 
 @Injectable()
@@ -40,9 +41,11 @@ export class UsersRepository {
   }
 
   async create(data: CreateUserData): Promise<SafeUser> {
+    const AVATAR_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
+    const avatarColor = data.avatar_color ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
     const { rows } = await this.pool.query<SafeUser>(
-      `INSERT INTO users (name, email, password_hash, initials, role, user_type, role_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO users (name, email, password_hash, initials, role, user_type, role_type, avatar_color)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING ${SAFE_COLS}`,
       [
         data.name,
@@ -52,6 +55,7 @@ export class UsersRepository {
         data.role ?? 'member',
         data.user_type ?? 'member',
         data.role_type ?? null,
+        avatarColor,
       ],
     );
     return rows[0];
@@ -112,6 +116,18 @@ export class UsersRepository {
     return rows[0] ?? null;
   }
 
+  async isLicenseOwnerOrAdmin(userId: string): Promise<boolean> {
+    const { rows } = await this.pool.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM licenses WHERE owner_id = $1
+         UNION ALL
+         SELECT 1 FROM license_members WHERE user_id = $1 AND role IN ('owner', 'admin')
+       ) AS exists`,
+      [userId],
+    );
+    return rows[0]?.exists ?? false;
+  }
+
   async findAll(userId: string): Promise<(SafeUser & { projects: string[]; tasks_open: number })[]> {
     const { rows } = await this.pool.query(`
       WITH accessible_licenses AS (
@@ -158,7 +174,6 @@ export class UsersRepository {
         FROM tasks
         WHERE assignee_id = u.id
           AND status NOT IN ('completada', 'backlog')
-          AND parent_task_id IS NULL
       ) tc ON true
       WHERE u.is_active = true
         AND u.id IN (SELECT id FROM visible_users)

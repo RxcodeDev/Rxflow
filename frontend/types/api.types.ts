@@ -164,6 +164,37 @@ export interface WikiPageDetail extends WikiPageSummary {
   breadcrumb: Array<{ id: string; title: string }>;
 }
 
+export interface LicenseMemberAccessWorkspace {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  has_access: boolean;
+}
+
+export interface LicenseMemberAccessProject {
+  id: string;
+  code: string;
+  name: string;
+  has_access: boolean;
+}
+
+export interface LicenseMemberAccess {
+  id: string;
+  name: string;
+  email: string;
+  initials: string;
+  avatar_url: string | null;
+  avatar_color: string | null;
+  presence_status: string;
+  last_seen_at: string | null;
+  role_type: string | null;
+  /** Role within the license: owner | admin | member */
+  license_role: string;
+  workspaces: LicenseMemberAccessWorkspace[];
+  projects: LicenseMemberAccessProject[];
+}
+
 export interface WikiTreeNode {
   id: string;
   title: string;

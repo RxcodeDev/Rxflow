@@ -97,4 +97,14 @@ export class UsersController {
     if (caller.id !== id) throw new ForbiddenException();
     await this.svc.changePassword(id, body);
   }
+
+  @Patch(':id/reset-password')
+  @HttpCode(204)
+  async resetPassword(
+    @Param('id') id: string,
+    @Body() body: { password: string },
+    @CurrentUser() caller: SafeUser,
+  ) {
+    await this.svc.adminResetPassword(caller.id, id, body.password);
+  }
 }

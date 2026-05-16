@@ -76,6 +76,7 @@ function WsIcon({ icon, size = 12, color }: { icon: string; size?: number; color
     case 'zap':       return <svg {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
     case 'globe':     return <svg {...p}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
     case 'star':      return <svg {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+    case 'folder':    return <svg {...p}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>;
     default:          return <svg {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>;
   }
 }
@@ -304,7 +305,9 @@ export default function Sidebar({
       label: t('sectionTeam'),
       items: [
         { label: t('navProjects'), href: '/proyectos', icon: <LayersSvg /> },
-        { label: t('navMembers'),  href: '/miembros',  icon: <UsersSvg /> },
+        ...(user?.licenseRole === 'owner' || user?.licenseRole === 'admin'
+          ? [{ label: t('navMembers'), href: '/miembros', icon: <UsersSvg /> }]
+          : []),
       ],
     },
     {
@@ -367,7 +370,7 @@ export default function Sidebar({
           <Link
             href="/perfil"
             className={s.avatar}
-            style={!user?.avatar_url && user?.avatar_color ? { background: user.avatar_color } : undefined}
+            style={!user?.avatar_url ? { background: user?.avatar_color ?? '#111111' } : undefined}
             title="Editar perfil"
             aria-label="Editar perfil"
           >
@@ -377,7 +380,7 @@ export default function Sidebar({
             ) : (
               <div
                 className={s.avatarInitials}
-                style={user?.avatar_color ? { color: '#fff' } : undefined}
+                style={{ color: '#fff' }}
                 aria-hidden="true"
               >
                 {user?.initials ?? '?'}
@@ -385,7 +388,7 @@ export default function Sidebar({
             )}
           </Link>
           <div className={cx(s.userInfo, collapsed && s.userInfoCollapsed)}>
-            <span className={s.userRole}>{user?.role ?? t('roleMember')}</span>
+            <span className={s.userRole}>{user?.role_type ?? user?.licenseRole ?? t('roleMember')}</span>
             <span className={s.userName}>{user?.name ?? 'Usuario'}</span>
           </div>
         </header>
@@ -560,19 +563,16 @@ export default function Sidebar({
                                       data-tip={proj.name}
                                     >
                                       <span className={s.navIcon}>
-                                        <svg viewBox="0 0 24 24" fill="none"
-                                             stroke={ws.color ?? 'currentColor'}
-                                             strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                                             width={14} height={14} aria-hidden="true">
-                                          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-                                        </svg>
+                                        <WsIcon icon="folder" size={11} color={ws.color} />
                                       </span>
                                       <span className={cx(s.navText, collapsed && s.navTextHidden)}>
                                         <span className={s.projectCode}>{proj.code}</span>
                                         {proj.name}
                                       </span>
                                       <span className={cx(s.navArrow, collapsed && s.navArrowHidden)}>
-                                        <ArrowSvg />
+                                        <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                                          <path d="M2 3.5l3 3 3-3" />
+                                        </svg>
                                       </span>
                                     </summary>
                                     <ul className={cx(s.submenu, collapsed && s.submenuCollapsed)}>

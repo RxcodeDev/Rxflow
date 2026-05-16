@@ -1,4 +1,5 @@
-import { IsString, MinLength, MaxLength, IsOptional, IsUUID, IsIn } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, IsUUID, IsIn, IsEmail } from 'class-validator';
+
 
 export class CreateLicenseDto {
   @IsString()
@@ -30,4 +31,42 @@ export class AssignProjectDto {
 
   @IsUUID()
   userId: string;
+}
+
+export class UpdateMemberRoleDto {
+  @IsString()
+  @IsIn(['owner', 'admin', 'member'])
+  role: string;
+}
+
+export class CreatePositionDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name: string;
+}
+
+export class CreateInviteDto {
+  @IsString()
+  @IsIn(['owner', 'admin', 'member'])
+  role: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  roleType?: string;
+}
+
+export class AcceptInviteDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name: string;
+
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
 }

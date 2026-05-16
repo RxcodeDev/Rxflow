@@ -60,7 +60,8 @@ app/(dashboard)/proyectos/[id]/epicas/page.tsx  ← Épicas
 app/(dashboard)/proyectos/[id]/cycles/page.tsx  ← Cycles de proyecto
 app/(dashboard)/proyectos/[id]/tareas/[taskId]/page.tsx ← Detalle de tarea
 app/(dashboard)/cycles/page.tsx                 ← Cycles globales
-app/(dashboard)/miembros/page.tsx               ← Equipo (edición/alta con campos separados: tipo de usuario y tipo de rol)
+app/(dashboard)/miembros/page.tsx               ← Gestión de miembros de licencia — panel split (lista izquierda + detalle derecho), control de acceso por workspace/proyecto por miembro, modal AddMember con 2 modos: "Invitar via link" (genera token) y "Crear cuenta" (formulario completo)
+app/invitar/[token]/page.tsx                    ← Página pública (sin auth) para aceptar invitaciones — muestra info de la licencia/rol, formulario nombre+correo+pwd, auto-login tras aceptar
 app/(dashboard)/espacios/page.tsx               ← Workspaces
 app/(dashboard)/perfil/page.tsx                 ← Perfil de usuario
 app/(dashboard)/preferencias/page.tsx           ← Preferencias (Server Component)
@@ -85,18 +86,19 @@ components/features/wiki/
 components/layouts/Sidebar.tsx    ← Sidebar desktop ('use client')
 components/layouts/Navbar.tsx     ← Bottom nav mobile ('use client')
 components/features/tasks/
-  CreateTaskModal.tsx             ← Modal global — NO montar en páginas individuales
+  CreateTaskModal.tsx             ← Modal global — NO montar en páginas individuales; crea tareas asociadas a una épica
   TaskDrawer.tsx                  ← Drawer global — NO montar en páginas individuales; cabecera + propiedades fijas, scroll solo en contenido central, composer de comentarios fijo abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
 components/features/projects/
   ImportProjectModal.tsx          ← Modal para contexto IA + importación JSON y exportación completa por proyecto
-components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal
+components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal, SearchSelect, Tooltip
 
 store/UIContext.tsx                ← UIProvider, useUIState(), useUIDispatch()
 store/slices/uiSlice.ts           ← openCreateModal, closeCreateModal, openDrawer, closeDrawer, bumpProjects
 lib/api.ts                        ← apiGet, apiPost, apiPatch, apiDelete
 types/api.types.ts                ← ApiWrapped<T>, ProjectSummary, TaskItem, TaskAssignee, CycleSummary,
                                      MemberItem, NotificationItem, EpicItem, WorkspaceSummary, PaginatedResponse,
-                                     License, WikiPageSummary, WikiPageDetail, WikiTreeNode
+                                     License, WikiPageSummary, WikiPageDetail, WikiTreeNode,
+                                     LicenseMemberAccess, LicenseMemberAccessWorkspace, LicenseMemberAccessProject
 middleware.ts                     ← Protege rutas, redirige a /login si no hay cookie rxflow_token
 proxy.ts                          ← Guard de rutas: permite /, /login y /register sin token
 ```
@@ -139,6 +141,21 @@ config/database.config.ts         ← getPool() singleton (raw pg, sin ORM)
 
 ---
 
+## Modelo de datos — jerarquía de Épicas y Tareas
+
+- **Épicas** son entidades de agrupación que pueden tener una épica padre (`parent_epic_id`), formando una jerarquía árbol. Una épica pertenece a un proyecto.
+- **Tareas** son los items de trabajo hoja. Cada tarea puede asociarse a una épica (`epic_id`). Las tareas son conceptualmente las "subtareas" de una épica.
+- **No existe tarea-subtarea**: el campo `parent_task_id` existe en la BD como artefacto histórico pero NO se usa en la UI ni en los endpoints activos. No crear ni documentar lógica de subtareas entre tareas.
+
+```
+Proyecto
+ └── Épica A
+      ├── Épica A.1  (épica hija, vía parent_epic_id)
+      │    └── Tarea 3
+      ├── Tarea 1
+      └── Tarea 2
+```
+
 ## Trabajo pendiente
 
 TaskDrawer y CreateTaskModal aún usan datos demo hardcodeados (pendiente conectar a API real).
@@ -156,6 +173,7 @@ TaskDrawer y CreateTaskModal aún usan datos demo hardcodeados (pendiente conect
 --c-hover      #f5f5f5   hover / skeleton
 --c-line       #efefef   divisores
 --c-danger     #c0392b   acciones destructivas
+--c-success    #16a34a   confirmaciones / estados exitosos
 --c-active-pill #f0f0f0  nav activo
 --nav-h        4.25rem
 --ease         0.25s ease
@@ -185,7 +203,7 @@ GET  /tasks?projectCode=&status=&cycleId=  → TaskItem[]
 GET  /tasks/:id           → TaskDetail
 POST /tasks               { projectCode, title, priority, status, assigneeId?, epicId?, cycleId?, dueDate? }
 PATCH /tasks/:id          { ...campos }
-DELETE /tasks/:id         → elimina la tarea y sus subtareas vía cascade en BD
+DELETE /tasks/:id         → elimina la tarea permanentemente
 POST /tasks/:id/comments  { content }
 
 GET  /cycles              → CycleSummary[]
@@ -227,6 +245,9 @@ POST /licenses/:id/assign-workspace    { workspaceId }
 DELETE /licenses/:id/assign-workspace  { workspaceId }
 POST /licenses/:id/assign-project     { projectId }
 DELETE /licenses/:id/assign-project   { projectId }
+GET  /licenses/:id/members                            → LicenseMemberAccess[] (miembros + acceso por workspace/proyecto)
+PATCH /licenses/:id/members/:userId                  { role } → cambia rol en la licencia (solo owner puede)
+DELETE /licenses/:id/members/:userId/projects/:projectId → quita acceso al proyecto para ese miembro
 GET  /licenses/:id/my-workspaces → WorkspaceSummary[]
 
 GET  /wiki?licenseId=                      → WikiPageSummary[]
@@ -241,6 +262,10 @@ POST /wiki                                 { licenseId, title, content?, workspa
 PATCH /wiki/:id                            { title?, content?, ...relaciones }
 DELETE /wiki/:id
 PATCH /wiki/:id/archive                    → toggle is_archived
+
+GET  /invites/:token                → info pública de la invitación (sin auth)
+POST /invites/:token/accept         { name, email, password } → crea usuario, une a licencia, devuelve JWT (sin auth)
+POST /licenses/:id/invites          { role, roleType? } → genera token de invitación válido 7 días [JWT]
 
 GET  /export/full
 GET  /export/markdown
@@ -270,7 +295,7 @@ const { isDrawerOpen, activeTaskId, isCreateModalOpen } = useUIState();
 
 // Disparar acciones
 const dispatch = useUIDispatch();
-dispatch(openCreateModal('task'));          // 'task' | 'subtask' | 'project' | 'workspace'
+dispatch(openCreateModal('task'));          // 'task' | 'project' | 'workspace'
 dispatch(closeCreateModal());
 dispatch(openDrawer({ taskId, projectId }));
 dispatch(closeDrawer());
@@ -301,7 +326,87 @@ juan@rxflow.io / audit1234
 7. **SQL parametrizado** en backend — nunca interpolación de strings
 8. **Iconos** = Feather, SVG inline, `viewBox="0 0 24 24"`, stroke-based, `aria-hidden="true"`
 9. **⛔ NUNCA `<select>` nativo** — siempre custom dropdown con búsqueda, íconos por opción y tooltip en hover. Referencia: `components/features/wiki/TaskSearchSelect.tsx`
-10. **Patrón 100dvh (sin scroll general)** — Páginas que deben llenar la pantalla sin scroll del `<main>` padre usan:
+10. **Empty states siempre centrados en su contenedor** — Cualquier mensaje de estado vacío ("No hay tareas", "Sin resultados", "Acceso restringido", etc.) debe centrarse verticalmente **dentro de su contenedor**, no con padding fijo:
+    ```tsx
+    // ✅ Correcto — se centra en el espacio disponible
+    <div className="h-full flex flex-col items-center justify-center gap-3 text-center text-[var(--c-muted)]">
+      ...
+    </div>
+
+    // ❌ Incorrecto — padding fijo no centra en el contenedor
+    <div className="py-16 flex flex-col items-center gap-3 text-center">
+      ...
+    </div>
+    ```
+    Si el contenedor tiene altura fija (`100dvh`, `flex-1`, etc.) el empty state hereda esa altura con `h-full`.
+
+11. **Botones CRUD — estilos normalizados** — Tres variantes, siempre con variables CSS, nunca colores hardcodeados:
+    ```tsx
+    // Primario (crear, guardar, confirmar)
+    "bg-[var(--c-text)] text-[var(--c-bg)] hover:opacity-80"
+
+    // Secundario (cancelar, acción neutra)
+    "border border-[var(--c-border)] text-[var(--c-text-sub)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]"
+
+    // Peligro (eliminar, acción destructiva)
+    "border border-[var(--c-danger)] text-[var(--c-danger)] hover:bg-[var(--c-danger)] hover:text-[var(--c-bg)]"
+    ```
+    ❌ Nunca usar `hover:bg-[var(--c-hover)]` en botones de peligro — el hover gris en rojo es inconsistente.
+    ❌ Nunca usar `hover:bg-[var(--c-hover)]` en botones secundarios — el relleno gris es opaco y sin intención; usar `hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]` en su lugar.
+    ❌ Nunca usar `hover:opacity-XX` en botones secundarios.
+
+12. **⛔ NUNCA botones de solo texto sin estilo visual** — Un elemento `<button>` cuyo único estilo es `text-[color] hover:text-[otro]` no parece clickable y confunde al usuario. Para acciones inline secundarias (regenerar, limpiar, reintentar, etc.) usar siempre un **icono-botón** con borde y tamaño fijo:
+    ```tsx
+    // ✅ Correcto — icono-botón con borde y título descriptivo
+    <button
+      type="button"
+      title="Generar nuevo enlace"
+      className="w-7 h-7 flex items-center justify-center rounded-lg border border-[var(--c-border)] text-[var(--c-muted)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)] transition-colors cursor-pointer bg-transparent"
+    >
+      <svg .../>  {/* Feather: rotate-ccw, refresh-cw, x, etc. */}
+    </button>
+
+    // ❌ Incorrecto — texto plano que no parece botón
+    <button className="text-[12px] text-[var(--c-muted)] hover:text-[var(--c-text-sub)]">
+      Generar nuevo enlace
+    </button>
+    ```
+    El `title` actúa como tooltip accesible. Posicionar el icono en el extremo del contexto donde aplica la acción (ej. esquina del label, junto al input).
+
+13. **Tooltips — patrón único con `<Tooltip>`** — Usar siempre `components/ui/Tooltip.tsx`. Nunca `title=""` nativo ni tooltips ad-hoc con `position: absolute` (se cortan en contenedores `overflow`). El componente usa `getBoundingClientRect()` + `position: fixed` para escapar cualquier overflow:
+    ```tsx
+    import Tooltip from '@/components/ui/Tooltip';
+
+    <Tooltip
+      content="Texto del tooltip"
+      side="right"           // 'top' | 'bottom' | 'left' | 'right'
+      icon={<svg .../>}      // Feather icon opcional — da contexto visual
+    >
+      <button ...>
+        <svg .../>
+      </button>
+    </Tooltip>
+    ```
+    Estilos del tooltip: `bg-[var(--c-bg)]`, `border-[var(--c-border)]`, `shadow-sm`, texto `font-semibold text-[11px]`, flecha apuntando al trigger.
+    ❌ Nunca usar `title=""` en icono-botones visibles — no es consistente con el diseño.
+    ❌ Nunca implementar tooltips con `position: absolute` dentro de contenedores con `overflow`.
+
+15. **Vista mobile obligatoria en cada página** — Cada página o vista del dashboard **debe tener una UX/UI mobile dedicada**, no una versión reducida del desktop. Reglas:
+    - En mobile (`< md`) ocultar paneles laterales y columnas extra; reemplazar por **bottom sheet** (handle visible, `h-[88dvh] flex flex-col`, inner `flex-1 min-h-0 overflow-y-auto`) activado al tocar un item.
+    - Cuando el detalle tiene múltiples secciones, usar **tabs con indicador underline** en vez de scroll largo:
+      ```tsx
+      const TABS = ['perfil', 'permisos', 'acceso'] as const;
+      type Tab = typeof TABS[number];
+      const [tab, setTab] = useState<Tab>('perfil');
+      // Tab bar: flex gap-1 border-b border-[var(--c-border)] — botón por tab con indicador absolute bottom-0
+      // Contenido: flex-1 min-h-0 overflow-y-auto pb-4
+      ```
+    - La bottom sheet debe tener un handle visual (`w-10 h-1 rounded-full bg-[var(--c-border)]`) y cerrarse al tocar el backdrop.
+    - Los botones de acción del panel en mobile deben ser **icon-buttons con Tooltip**, no texto largo.
+    - Añadir `pb-[calc(var(--nav-h)+2rem)]` a columnas scrollables que puedan quedar tapadas por el nav mobile.
+    ❌ Nunca usar `overflow-y-auto p-5 max-h-[X]` como wrapper del bottom sheet — el scroll externo rompe el scroll interno de los tabs.
+
+14. **Patrón 100dvh (sin scroll general)** — Páginas que deben llenar la pantalla sin scroll del `<main>` padre usan:
     ```tsx
     // Negates layout's p-6, fills full viewport height
     <div className="-m-6 flex flex-col bg-[var(--c-bg)]" style={{ height: '100dvh' }}>

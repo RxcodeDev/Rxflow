@@ -1,11 +1,11 @@
 import {
   Body, Controller, Delete, Get, HttpCode,
-  Param, Post, UseGuards,
+  Param, Patch, Post, UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { LicensesService } from './licenses.service';
-import { AddMemberDto, AssignProjectDto, AssignWorkspaceDto, CreateLicenseDto } from './dto/licenses.dto';
+import { AddMemberDto, AssignProjectDto, AssignWorkspaceDto, CreateLicenseDto, UpdateMemberRoleDto, CreatePositionDto, CreateInviteDto } from './dto/licenses.dto';
 import type { SafeUser } from '../users/entities/user.entity';
 
 @Controller('licenses')
@@ -50,6 +50,31 @@ export class LicensesController {
     await this.svc.removeMember(licenseId, userId, caller.id);
   }
 
+  @Get(':id/members')
+  getMembersWithAccess(@Param('id') id: string) {
+    return this.svc.getMembersWithAccess(id);
+  }
+
+  @Patch(':id/members/:userId')
+  updateMemberRole(
+    @Param('id') licenseId: string,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateMemberRoleDto,
+    @CurrentUser() caller: SafeUser,
+  ) {
+    return this.svc.updateMemberRole(licenseId, userId, dto.role, caller.id);
+  }
+
+  @Delete(':id/members/:userId/projects/:projectId')
+  @HttpCode(204)
+  async removeMemberProjectAccess(
+    @Param('id') licenseId: string,
+    @Param('userId') userId: string,
+    @Param('projectId') projectId: string,
+  ) {
+    await this.svc.removeMemberProjectAccess(licenseId, userId, projectId);
+  }
+
   // ── Workspace assignments ─────────────────────────────────────────────────────
 
   @Post(':id/assign-workspace')
@@ -74,6 +99,35 @@ export class LicensesController {
   @HttpCode(204)
   async unassignProject(@Body() dto: AssignProjectDto) {
     await this.svc.removeMemberFromProject(dto.projectId, dto.userId);
+  }
+
+  // ── Positions ─────────────────────────────────────────────────────────────────
+
+  @Get(':id/positions')
+  getPositions(@Param('id') id: string) {
+    return this.svc.getPositions(id);
+  }
+
+  @Post(':id/positions')
+  createPosition(@Param('id') id: string, @Body() dto: CreatePositionDto) {
+    return this.svc.createPosition(id, dto.name);
+  }
+
+  @Delete(':id/positions/:posId')
+  @HttpCode(204)
+  async deletePosition(@Param('id') licenseId: string, @Param('posId') posId: string) {
+    await this.svc.deletePosition(licenseId, posId);
+  }
+
+  // ── Invites ───────────────────────────────────────────────────────────────────
+
+  @Post(':id/invites')
+  createInvite(
+    @Param('id') licenseId: string,
+    @Body() dto: CreateInviteDto,
+    @CurrentUser() caller: SafeUser,
+  ) {
+    return this.svc.createInvite(licenseId, caller.id, dto.role, dto.roleType);
   }
 
   // ── Scoped queries ────────────────────────────────────────────────────────────

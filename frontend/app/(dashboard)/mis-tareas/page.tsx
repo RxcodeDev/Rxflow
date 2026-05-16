@@ -222,11 +222,11 @@ function ProjectsView({ tasks, projectCodes, onStatusChange, onOpen, filterStatu
   }
 
   if (groups.length === 0) return (
-    <div className="py-16 flex flex-col items-center gap-3 text-center">
-      <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[var(--c-muted)]" aria-hidden="true">
+    <div className="h-full flex flex-col items-center justify-center gap-3 text-center text-[var(--c-muted)]">
+      <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
         <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
       </svg>
-      <p className="text-sm text-[var(--c-muted)]">No hay tareas que coincidan</p>
+      <p className="text-sm">No hay tareas que coincidan</p>
     </div>
   );
 

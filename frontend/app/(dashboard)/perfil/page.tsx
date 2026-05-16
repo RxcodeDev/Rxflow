@@ -59,7 +59,7 @@ export default function PerfilPage() {
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = user
-    ? (name !== user.name || email !== user.email || avatarChanged || colorChanged)
+    ? (name !== user.name || email !== user.email || avatarChanged || colorChanged || avatarColor !== (user.avatar_color ?? '#111111'))
     : false;
 
   /* ── file upload ── */
@@ -106,7 +106,7 @@ export default function PerfilPage() {
         name:         name.trim(),
         email:        email.trim(),
         avatar_url:   avatarChanged ? (avatarPreview ?? null) : undefined,
-        avatar_color: colorChanged  ? avatarColor             : undefined,
+        avatar_color: avatarColor,
       });
       setAvatarChanged(false);
       setColorChanged(false);

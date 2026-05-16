@@ -14,6 +14,7 @@ import { LicensesModule } from './modules/licenses/licenses.module';
 import { WikiModule } from './modules/wiki/wiki.module';
 import { ExportModule } from './modules/export/export.module';
 import { ImportModule } from './modules/import/import.module';
+import { InvitesModule } from './modules/invites/invites.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ImportModule } from './modules/import/import.module';
     WikiModule,
     ExportModule,
     ImportModule,
+    InvitesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

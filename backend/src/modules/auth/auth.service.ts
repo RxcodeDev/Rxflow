@@ -2,6 +2,7 @@ import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { UsersRepository } from '../users/users.repository';
+import { LicensesService } from '../licenses/licenses.service';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { JwtPayload } from './strategies/jwt.strategy';
@@ -11,6 +12,7 @@ export class AuthService {
   constructor(
     private readonly usersRepo: UsersRepository,
     private readonly jwtService: JwtService,
+    private readonly licensesService: LicensesService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -31,8 +33,13 @@ export class AuthService {
       initials,
     });
 
+    // Auto-create a license so the new user has an account to manage
+    const license = await this.licensesService.createLicense(dto.name, user.id);
+    await this.licensesService.createDefaultPositions(license.id);
+
     const access_token = this.sign({ sub: user.id, email: user.email, name: user.name, role: user.role });
-    return { user, access_token };
+    const licenseRole  = await this.licensesService.getUserLicenseRole(user.id);
+    return { user: { ...user, licenseRole }, access_token };
   }
 
   async login(dto: LoginDto) {
@@ -45,10 +52,10 @@ export class AuthService {
     const { password_hash: _, ...user } = userWithHash;
     const access_token = this.sign({ sub: user.id, email: user.email, name: user.name, role: user.role });
 
-    // Mark user as online
     await this.usersRepo.updatePresence(user.id, 'online');
 
-    return { user, access_token };
+    const licenseRole = await this.licensesService.getUserLicenseRole(user.id);
+    return { user: { ...user, licenseRole }, access_token };
   }
 
   private sign(payload: JwtPayload): string {

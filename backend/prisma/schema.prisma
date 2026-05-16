@@ -28,8 +28,41 @@ model License {
   owner      User            @relation("LicenseOwner", fields: [owner_id], references: [id])
   workspaces Workspace[]
   members    LicenseMember[]
+  positions  Position[]
+  invites    LicenseInvite[]
 
   @@map("licenses")
+}
+
+model LicenseInvite {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  license_id String    @db.Uuid
+  token      String    @unique @db.VarChar(64)
+  role       String    @default("member") @db.VarChar(20)
+  role_type  String?   @db.VarChar(100)
+  created_by String    @db.Uuid
+  expires_at DateTime  @db.Timestamptz
+  used_at    DateTime? @db.Timestamptz
+  used_by    String?   @db.Uuid
+  created_at DateTime  @default(now()) @db.Timestamptz
+
+  license License @relation(fields: [license_id], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("license_invites")
+}
+
+model Position {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  license_id String   @db.Uuid
+  name       String   @db.VarChar(100)
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  license License @relation(fields: [license_id], references: [id], onDelete: Cascade)
+
+  @@unique([license_id, name])
+  @@index([license_id])
+  @@map("positions")
 }
 
 model LicenseMember {
@@ -172,7 +205,6 @@ model Task {
   project_id     String    @db.Uuid
   epic_id        String?   @db.Uuid
   cycle_id       String?   @db.Uuid
-  parent_task_id String?   @db.Uuid
   assignee_id    String?   @db.Uuid
   title          String    @db.VarChar(255)
   description    String?
@@ -189,8 +221,6 @@ model Task {
   epic          Epic?          @relation(fields: [epic_id], references: [id])
   assignee      User?          @relation("TaskPrimaryAssignee", fields: [assignee_id], references: [id])
   creator       User           @relation("TaskCreator", fields: [created_by], references: [id])
-  parentTask    Task?          @relation("SubTasks", fields: [parent_task_id], references: [id])
-  subtasks      Task[]         @relation("SubTasks")
   taskAssignees TaskAssignee[]
   comments      Comment[]
   activityLogs  ActivityLog[]

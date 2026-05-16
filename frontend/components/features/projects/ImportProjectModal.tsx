@@ -49,7 +49,6 @@ interface PreviewResult {
   summary: {
     epics: number;
     tasks: number;
-    subtasks: number;
   };
   normalized_payload: {
     epics: unknown[];
@@ -185,8 +184,7 @@ ${ctx.cycles.length ? ctx.cycles.map(c => `- "${c.name}" | ID: ${c.id} | Status:
       "epic_id": "UUID de épica existente o null",
       "epic_ref": "índice 0-based del array epics o null",
       "cycle_id": "UUID de ciclo o null",
-      "due_date": "YYYY-MM-DD o null",
-      "subtasks": []
+      "due_date": "YYYY-MM-DD o null"
     }
   ]
 }
@@ -659,8 +657,7 @@ Responde SOLO con el JSON válido, sin texto adicional.`
                   </p>
                   <p>
                     Se insertaran <strong>{preview.summary.epics}</strong> epica{preview.summary.epics !== 1 ? 's' : ''} ·{' '}
-                    <strong>{preview.summary.tasks}</strong> tarea{preview.summary.tasks !== 1 ? 's' : ''} ·{' '}
-                    <strong>{preview.summary.subtasks}</strong> subtarea{preview.summary.subtasks !== 1 ? 's' : ''}
+                    <strong>{preview.summary.tasks}</strong> tarea{preview.summary.tasks !== 1 ? 's' : ''}
                   </p>
                   {!preview.can_import && preview.errors.length > 0 && (
                     <ul className="mt-2 list-disc list-inside space-y-0.5 text-[12px]">

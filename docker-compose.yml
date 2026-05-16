@@ -16,7 +16,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    pull_policy: build
     container_name: rxflow_backend
     restart: unless-stopped
     environment:
@@ -49,7 +48,6 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-    pull_policy: build
     container_name: rxflow_frontend
     restart: unless-stopped
     environment:

@@ -49,6 +49,7 @@ interface SearchSelectProps {
   hideNone?: boolean;
   loading?: boolean;
   disabled?: boolean;
+  locked?: boolean;
   searchPlaceholder?: string;
   className?: string;
 }
@@ -72,13 +73,17 @@ export default function SearchSelect({
   hideNone = false,
   loading = false,
   disabled = false,
+  locked = false,
   searchPlaceholder = 'Buscar...',
   className = '',
 }: SearchSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ text: string; subLabel?: string; color?: string; top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selected = options.find(o => o.value === value) ?? null;
@@ -90,11 +95,15 @@ export default function SearchSelect({
       )
     : options;
 
-  /* close on outside click */
+  /* close on outside click — checks both wrapper and fixed dropdown */
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        ref.current && !ref.current.contains(target) &&
+        !(dropRef.current && dropRef.current.contains(target))
+      ) {
         setOpen(false);
         setQuery('');
       }
@@ -106,6 +115,15 @@ export default function SearchSelect({
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 0);
   }, [open]);
+
+  function handleToggle() {
+    if (isDisabled || locked) return;
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    setOpen(o => !o);
+  }
 
   const select = (opt: SelectOption | null) => {
     onChange(opt?.value ?? '', opt);
@@ -125,14 +143,16 @@ export default function SearchSelect({
     <div ref={ref} className={`relative${className ? ' ' + className : ''}`}>
       {/* ── Trigger ──────────────────────────────────────────────── */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => !isDisabled && setOpen(o => !o)}
+        onClick={handleToggle}
         disabled={isDisabled}
         className={
           triggerCls +
-          (isDisabled ? 'opacity-50 cursor-not-allowed ' : 'cursor-pointer hover:border-[var(--c-text-sub)] ') +
-          (open ? 'border-[var(--c-text-sub)] shadow-[0_0_0_3px_rgba(0,0,0,0.06)]' : '')
+          (isDisabled ? 'opacity-50 cursor-not-allowed ' : locked ? 'cursor-not-allowed ' : 'cursor-pointer hover:border-[var(--c-text-sub)] ') +
+          (locked ? 'border-[var(--c-success)] ' : open ? 'border-[var(--c-text-sub)] shadow-[0_0_0_3px_rgba(0,0,0,0.06)]' : '')
         }
+        style={locked ? { background: 'color-mix(in srgb, var(--c-success) 5%, var(--c-bg))' } : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -143,32 +163,34 @@ export default function SearchSelect({
         ) : selected?.icon ? (
           <span className="shrink-0">{selected.icon}</span>
         ) : (
-          <DefaultIcon />
+          <DefaultIcon color={locked ? 'var(--c-success)' : 'var(--c-muted)'} />
         )}
 
         {selected ? (
           <span className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="text-[var(--c-text)] font-medium truncate">{selected.label}</span>
+            <span className="font-medium truncate" style={{ color: locked ? 'var(--c-success)' : 'var(--c-text)' }}>{selected.label}</span>
           </span>
         ) : (
-          <span className="flex-1 text-left text-[var(--c-muted)]">
+          <span className="flex-1 text-left" style={{ color: locked ? 'var(--c-success)' : 'var(--c-muted)' }}>
             {loading ? 'Cargando...' : placeholder}
           </span>
         )}
 
         <svg
-          className="shrink-0 text-[var(--c-muted)] ml-auto transition-transform"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          className="shrink-0 ml-auto transition-transform"
+          style={{ color: locked ? 'var(--c-success)' : 'var(--c-muted)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
           width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"
         >
           <path d="M2 4l4 4 4-4" />
         </svg>
       </button>
 
-      {/* ── Dropdown ─────────────────────────────────────────────── */}
-      {open && (
+      {/* ── Dropdown (fixed so it escapes overflow containers) ───── */}
+      {open && dropPos && (
         <div
-          className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] overflow-hidden"
+          ref={dropRef}
+          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+          className="bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] overflow-hidden"
           role="listbox"
         >
           {/* Search bar */}

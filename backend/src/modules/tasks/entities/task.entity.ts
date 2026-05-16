@@ -4,7 +4,6 @@ export interface Task {
   project_id: string;
   epic_id: string | null;
   cycle_id: string | null;
-  parent_task_id: string | null;
   assignee_id: string | null;
   title: string;
   description: string | null;

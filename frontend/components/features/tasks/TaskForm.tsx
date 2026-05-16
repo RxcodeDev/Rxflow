@@ -120,8 +120,7 @@ function PillGroup<T extends string>({
 
 /* ── Props ────────────────────────────────────────────────────── */
 export interface TaskFormProps {
-  /** Whether this is creating a top-level task or a subtask */
-  context: 'task' | 'subtask';
+  context: 'task';
   /** Called when form is cancelled (hide/close the host container) */
   onCancel: () => void;
   /** Called after task is successfully created. If omitted, reloads the page. */
@@ -211,11 +210,7 @@ export default function TaskForm({
         } else {
           setEpicId('');
         }
-        setParentTaskId(
-          context === 'subtask' && activeTaskId
-            ? (tRes.data.find(t => t.id === activeTaskId)?.id ?? '')
-            : '',
-        );
+        setParentTaskId('');
       })
       .catch(console.error);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,9 +232,8 @@ export default function TaskForm({
         priority: PRIORITY_MAP[priority],
         status: initialStatus,
         assigneeIds: assigneeIds.length > 0 ? assigneeIds : [],
-        epicId:       epicId       || null,
-        parentTaskId: context === 'subtask' ? (parentTaskId || null) : null,
-        dueDate:      dueDate      || null,
+        epicId:  epicId  || null,
+        dueDate: dueDate || null,
       });
       playSuccess();
       if (onSuccess) {
@@ -356,21 +350,6 @@ export default function TaskForm({
             <p className={`${baseCls} text-[var(--c-text-sub)] bg-[var(--c-hover)] cursor-default`}>
               {selectedProject ? `${selectedProject.name} (${selectedProject.code})` : '—'}
             </p>
-          </Field>
-        )}
-
-        {/* Subtarea de — solo contexto subtask */}
-        {context === 'subtask' && (
-          <Field label="Subtarea de">
-            <SearchSelect
-              options={parentTaskOptions}
-              value={parentTaskId}
-              onChange={(val) => setParentTaskId(val)}
-              placeholder="Sin tarea padre"
-              loading={loadingBase}
-              noneLabel="Sin tarea padre"
-              searchPlaceholder="Buscar tarea..."
-            />
           </Field>
         )}
 
