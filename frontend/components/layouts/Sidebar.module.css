@@ -194,6 +194,7 @@
   font-family: inherit;
   font-size: inherit;
   color: inherit;
+  text-align: left;
   text-decoration: none;
   white-space: nowrap;
   position: relative;
@@ -473,6 +474,132 @@
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* ── Project list under workspace (tree lines, same pattern as submenu) ── */
+.wsProjectList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0 1.3125rem;
+}
+
+.wsProjectItem {
+  position: relative;
+  padding-top: 0.0625rem;
+  padding-bottom: 0.0625rem;
+}
+
+.wsProjectItem::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--c-line);
+}
+
+.wsProjectItem:last-child::before {
+  bottom: 50%;
+  width: 0.75rem;
+  border-bottom: 1.5px solid var(--c-line);
+  border-bottom-left-radius: 0.375rem;
+}
+
+.wsProjectItem:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 0.75rem;
+  border-bottom: 1.5px solid var(--c-line);
+}
+
+/* ── Project row nested under workspace (smaller than workspace header) ── */
+.navItemProject {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3125rem 0.625rem 0.3125rem 0.75rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.12s;
+  list-style: none;
+}
+
+.navItemProject:hover {
+  background: var(--c-hover);
+}
+
+.navItemProjectCollapsed {
+  padding: 0.3125rem 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.navIconProject {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  color: var(--c-muted);
+}
+
+.navIconProject svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.navTextProject {
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--c-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navArrowProject {
+  flex-shrink: 0;
+  color: var(--c-muted);
+}
+
+.navArrowProject svg {
+  width: 0.5625rem;
+  height: 0.5625rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s;
+}
+
+.navGroup[open] .navIconProject {
+  color: var(--c-text);
+}
+
+.navGroup[open] .navTextProject {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.navGroup[open] .navArrow svg,
+.navGroup[open] .navArrowProject svg {
+  transform: rotate(180deg);
 }
 
 /* ── Tooltips (collapsed only) ─────────────────────── */

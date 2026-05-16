@@ -23,7 +23,14 @@ export interface ProjectSummary {
   tasks_total: number;
   tasks_done: number;
   progress_pct: number;
-  team: { initials: string; name: string }[];
+  team: {
+    id?: string;
+    initials: string;
+    name: string;
+    avatar_url?: string | null;
+    avatar_color?: string | null;
+    presence_status?: 'online' | 'away' | 'offline';
+  }[];
   active_cycle: string | null;
 }
 
@@ -117,6 +124,9 @@ export interface WorkspaceMember {
   id: string;
   name: string;
   initials: string;
+  avatar_url?: string | null;
+  avatar_color?: string | null;
+  presence_status?: 'online' | 'away' | 'offline';
 }
 
 export interface WorkspaceSummary {

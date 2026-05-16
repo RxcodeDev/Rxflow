@@ -79,7 +79,7 @@ export default function SearchSelect({
 }: SearchSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [dropPos, setDropPos] = useState<{ top: number; right: number; minWidth: number } | null>(null);
   const [tooltip, setTooltip] = useState<{ text: string; subLabel?: string; color?: string; top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -120,7 +120,7 @@ export default function SearchSelect({
     if (isDisabled || locked) return;
     if (!open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      setDropPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right, minWidth: rect.width });
     }
     setOpen(o => !o);
   }
@@ -189,7 +189,7 @@ export default function SearchSelect({
       {open && dropPos && (
         <div
           ref={dropRef}
-          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+          style={{ position: 'fixed', top: dropPos.top, right: dropPos.right, minWidth: dropPos.minWidth, zIndex: 9999 }}
           className="bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] overflow-hidden"
           role="listbox"
         >

@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import s from './Sidebar.module.css';
-import { useUIState, useUIDispatch } from '@/store/UIContext';
-import { openCreateModal } from '@/store/slices/uiSlice';
+import { useUIState } from '@/store/UIContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useLang } from '@/store/LangContext';
 import { apiGet } from '@/lib/api';
@@ -231,6 +230,14 @@ const BookSvg = () => (
     <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
   </svg>
 );
+const GridSvg = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="3" width="7" height="7" />
+    <rect x="14" y="3" width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+    <rect x="3" y="14" width="7" height="7" />
+  </svg>
+);
 
 /* DEFAULT_SECTIONS is built inside the component via useLang() */
 
@@ -287,7 +294,6 @@ export default function Sidebar({
   const initializedWorkspaceCollapse = useRef(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const pathname = usePathname();
-  const dispatch = useUIDispatch();
   const { projectsVersion } = useUIState();
   const { user, logout } = useAuth();
   const { t } = useLang();
@@ -308,6 +314,7 @@ export default function Sidebar({
         ...(user?.licenseRole === 'owner' || user?.licenseRole === 'admin'
           ? [{ label: t('navMembers'), href: '/miembros', icon: <UsersSvg /> }]
           : []),
+        { label: 'Workspaces', href: '/espacios', icon: <GridSvg /> },
       ],
     },
     {
@@ -484,25 +491,9 @@ export default function Sidebar({
               {si === 1 && (
                 <>
                   <hr className={s.divider} aria-hidden="true" />
-                  <div className="flex items-center justify-between pr-2">
-                    <span className={cx(s.navLabel, collapsed && s.navLabelCollapsed)} aria-hidden="true">
-                      {t('sectionWorkspaces')}
-                    </span>
-                    {!collapsed && (
-                      <Link
-                        href="/espacios"
-                        className="flex-shrink-0 text-[var(--c-muted)] hover:text-[var(--c-text-sub)] transition-colors pb-1"
-                        aria-label={t('navManageWorkspaces')}
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                             strokeLinecap="round" strokeLinejoin="round"
-                             width={13} height={13} aria-hidden="true">
-                          <circle cx="12" cy="12" r="3" />
-                          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-                        </svg>
-                      </Link>
-                    )}
-                  </div>
+                  <span className={cx(s.navLabel, collapsed && s.navLabelCollapsed)} aria-hidden="true">
+                    {t('sectionWorkspaces')}
+                  </span>
                   <ul className={s.navList}>
                     {workspaces.map((ws) => {
                       const wsCollapsed = collapsedWorkspaces.has(ws.id);
@@ -521,28 +512,31 @@ export default function Sidebar({
                           <button
                             type="button"
                             onClick={toggleWs}
-                            className="flex items-center gap-2 px-3 pt-2 pb-0.5 w-full text-left cursor-pointer bg-transparent border-none group"
+                            className={cx(s.navItem, collapsed && s.navItemCollapsed)}
                             aria-expanded={!wsCollapsed}
                           >
-                            <WsIcon icon={ws.icon ?? 'layers'} size={11} color={ws.color} />
-                            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-muted)] truncate flex-1 group-hover:text-[var(--c-text-sub)] transition-colors">
+                            <span className={s.navIcon} style={ws.color ? { color: ws.color } : undefined}>
+                              <WsIcon icon={ws.icon ?? 'layers'} size={11} color={ws.color} />
+                            </span>
+                            <span className={cx(s.navText, collapsed && s.navTextHidden, 'font-semibold')}>
                               {ws.name}
                             </span>
-                            <svg
-                              viewBox="0 0 10 10" width="8" height="8"
-                              fill="none" stroke="currentColor" strokeWidth="1.5"
-                              aria-hidden="true"
-                              className="text-[var(--c-muted)] shrink-0 transition-transform duration-200"
-                              style={{ transform: wsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-                            >
-                              <path d="M2 3.5l3 3 3-3" />
-                            </svg>
+                            <span className={cx(s.navArrow, collapsed && s.navArrowHidden)}>
+                              <svg
+                                viewBox="0 0 10 10"
+                                fill="none" stroke="currentColor" strokeWidth="1.5"
+                                aria-hidden="true"
+                                style={{ transform: wsCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+                              >
+                                <path d="M2 3.5l3 3 3-3" />
+                              </svg>
+                            </span>
                           </button>
                         )}
                         {!wsCollapsed && (
-                          <ul className={s.navList}>
+                          <ul className={s.wsProjectList}>
                             {ws.projects.length === 0 && !collapsed && (
-                              <li>
+                              <li className={s.wsProjectItem}>
                                 <span className="px-3 py-1.5 text-[11px] text-[var(--c-muted)] block">
                                   Sin proyectos
                                 </span>
@@ -552,25 +546,25 @@ export default function Sidebar({
                               const slug = proj.code.toLowerCase();
                               const basePath = `/proyectos/${slug}`;
                               return (
-                                <li key={proj.id}>
+                                <li key={proj.id} className={s.wsProjectItem}>
                                   <details className={s.navGroup}>
                                     <summary
                                       className={cx(
-                                        s.navItem,
-                                        collapsed && s.navItemCollapsed,
+                                        s.navItemProject,
+                                        collapsed && s.navItemProjectCollapsed,
                                         cx(s.tooltip, collapsed && s.tooltipVisible),
                                       )}
                                       data-tip={proj.name}
                                     >
-                                      <span className={s.navIcon}>
+                                      <span className={s.navIconProject}>
                                         <WsIcon icon="folder" size={11} color={ws.color} />
                                       </span>
-                                      <span className={cx(s.navText, collapsed && s.navTextHidden)}>
+                                      <span className={cx(s.navTextProject, collapsed && s.navTextHidden)}>
                                         <span className={s.projectCode}>{proj.code}</span>
                                         {proj.name}
                                       </span>
-                                      <span className={cx(s.navArrow, collapsed && s.navArrowHidden)}>
-                                        <svg viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                                      <span className={cx(s.navArrowProject, collapsed && s.navArrowHidden)}>
+                                        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                                           <path d="M2 3.5l3 3 3-3" />
                                         </svg>
                                       </span>
@@ -600,17 +594,6 @@ export default function Sidebar({
                       </li>
                       );
                     })}
-                    {!collapsed && (
-                      <li>
-                        <button
-                          type="button"
-                          className={s.newProjectBtn}
-                          onClick={() => dispatch(openCreateModal('workspace'))}
-                        >
-                          {t('navNewWorkspace')}
-                        </button>
-                      </li>
-                    )}
                   </ul>
                 </>
               )}

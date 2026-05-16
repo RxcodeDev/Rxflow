@@ -4,6 +4,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import SearchSelect, { type SelectOption } from '@/components/ui/SearchSelect';
 import { apiPatch, apiGet, apiPost, apiDelete } from '@/lib/api';
 import { useUIDispatch } from '@/store/UIContext';
 import { bumpProjects } from '@/store/slices/uiSlice';
@@ -24,6 +25,17 @@ const STATUSES = ['activo', 'pausado', 'archivado'] as const;
 const STATUS_LABEL: Record<string, string> = {
   activo: 'Activo', pausado: 'Pausado', archivado: 'Archivado',
 };
+const STATUS_COLOR: Record<string, string> = {
+  activo: 'var(--c-success)', pausado: '#f59e0b', archivado: 'var(--c-muted)',
+};
+
+/** Small workspace colour chip used as a SearchSelect option icon */
+function WsChip({ color }: { color: string }) {
+  return (
+    <span aria-hidden="true" className="shrink-0 inline-block rounded-[4px]"
+      style={{ width: 14, height: 14, background: color }} />
+  );
+}
 
 /** All available view slugs with display labels */
 const ALL_VIEWS: { suffix: string; label: string }[] = [
@@ -125,6 +137,13 @@ export default function EditProjectModal({ project, onClose, onSaved }: EditProj
   const methodologyKey = METHODOLOGY_MAP[methodology];
   const defaultViews   = METHODOLOGY_DEFAULTS[methodologyKey] ?? [];
 
+  const wsOptions: SelectOption[] = workspaces.map((ws) => ({
+    value: ws.id,
+    label: ws.name,
+    icon: <WsChip color={ws.color} />,
+    tooltip: ws.description ?? undefined,
+  }));
+
   function toggleExtraView(suffix: string) {
     setExtraViews((prev) =>
       prev.includes(suffix) ? prev.filter((v) => v !== suffix) : [...prev, suffix],
@@ -225,48 +244,42 @@ export default function EditProjectModal({ project, onClose, onSaved }: EditProj
           </div>
         </Field>
 
-        {/* Estado */}
-        <Field label="Estado" htmlFor="ep-status">
-          <div className="relative">
-            <select
-              id="ep-status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className={`${baseCls} pr-8 appearance-none cursor-pointer`}
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]" aria-hidden="true">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M2 4l4 4 4-4" />
-              </svg>
-            </span>
+        {/* Estado — píldoras con punto de color */}
+        <Field label="Estado">
+          <div className="flex flex-wrap gap-2">
+            {STATUSES.map((s) => {
+              const active = s === status;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={
+                    'flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer font-[inherit] ' +
+                    (active
+                      ? 'border-[var(--c-text)] bg-[var(--c-hover)] text-[var(--c-text)] font-semibold'
+                      : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)]')
+                  }
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: STATUS_COLOR[s] }} aria-hidden="true" />
+                  {STATUS_LABEL[s]}
+                </button>
+              );
+            })}
           </div>
         </Field>
 
         {/* Espacio de trabajo */}
         {workspaces.length > 0 && (
-          <Field label="Espacio de trabajo" htmlFor="ep-ws">
-            <div className="relative">
-              <select
-                id="ep-ws"
-                value={workspaceId}
-                onChange={(e) => setWorkspaceId(e.target.value)}
-                className={`${baseCls} pr-8 appearance-none cursor-pointer`}
-              >
-                <option value="">Sin espacio de trabajo</option>
-                {workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>{ws.name}</option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]" aria-hidden="true">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M2 4l4 4 4-4" />
-                </svg>
-              </span>
-            </div>
+          <Field label="Espacio de trabajo">
+            <SearchSelect
+              options={wsOptions}
+              value={workspaceId}
+              onChange={(val) => setWorkspaceId(val)}
+              placeholder="Sin espacio de trabajo"
+              noneLabel="Sin espacio de trabajo"
+              searchPlaceholder="Buscar espacio…"
+            />
           </Field>
         )}
 

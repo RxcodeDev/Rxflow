@@ -62,7 +62,7 @@ app/(dashboard)/proyectos/[id]/tareas/[taskId]/page.tsx ← Detalle de tarea
 app/(dashboard)/cycles/page.tsx                 ← Cycles globales
 app/(dashboard)/miembros/page.tsx               ← Gestión de miembros de licencia — panel split (lista izquierda + detalle derecho), control de acceso por workspace/proyecto por miembro, modal AddMember con 2 modos: "Invitar via link" (genera token) y "Crear cuenta" (formulario completo)
 app/invitar/[token]/page.tsx                    ← Página pública (sin auth) para aceptar invitaciones — muestra info de la licencia/rol, formulario nombre+correo+pwd, auto-login tras aceptar
-app/(dashboard)/espacios/page.tsx               ← Workspaces
+app/(dashboard)/espacios/page.tsx               ← Workspaces — panel split (lista izquierda con buscador + detalle derecho), patrón 100dvh, scrolls internos, mobile bottom sheet (h-[88dvh]). Avatares de miembros/equipo siguen el patrón Sidebar (imagen real o inicial con avatar_color) + dot de presencia (online/away/offline). "Asignar proyecto" en la cabecera del detalle, no en footer.
 app/(dashboard)/perfil/page.tsx                 ← Perfil de usuario
 app/(dashboard)/preferencias/page.tsx           ← Preferencias (Server Component)
 app/(dashboard)/integraciones/page.tsx          ← Integraciones (Server Component)
@@ -90,6 +90,7 @@ components/features/tasks/
   TaskDrawer.tsx                  ← Drawer global — NO montar en páginas individuales; cabecera + propiedades fijas, scroll solo en contenido central, composer de comentarios fijo abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
 components/features/projects/
   ImportProjectModal.tsx          ← Modal para contexto IA + importación JSON y exportación completa por proyecto
+  EditProjectModal.tsx            ← Editar proyecto — Estado y Metodología como píldoras (punto de color en Estado), Espacio de trabajo con SearchSelect (búsqueda + chip de color), sin <select> nativos
 components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal, SearchSelect, Tooltip
 
 store/UIContext.tsx                ← UIProvider, useUIState(), useUIDispatch()

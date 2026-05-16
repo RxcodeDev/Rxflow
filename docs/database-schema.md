@@ -28,6 +28,38 @@
 | [notifications](#notifications) | Notificaciones por usuario |
 | [user_notification_prefs](#user_notification_prefs) | Preferencias de notificación |
 | [wiki_pages](#wiki_pages) | Páginas de wiki (jerarquía árbol) |
+| [license_invites](#license_invites) | Invitaciones de licencia |
+| [positions](#positions) | Catálogo de puestos |
+### license_invites
+
+Invitaciones para sumar usuarios a una licencia (tenant). Permite gestión de onboarding y control de acceso por invitación.
+
+| Columna      | Tipo         | Nullable | Default                | Descripción                                  |
+|--------------|--------------|----------|------------------------|----------------------------------------------|
+| `id`         | uuid         | NO       | gen_random_uuid()      | PK                                           |
+| `license_id` | uuid         | NO       |                        | FK → licenses.id (CASCADE)                   |
+| `email`      | varchar(255) | NO       |                        | Email invitado                               |
+| `invited_by` | uuid         | NO       |                        | FK → users.id (SET NULL)                     |
+| `status`     | varchar(20)  | NO       | 'pending'              | Estado de la invitación                      |
+| `created_at` | timestamptz  | NO       | now()                  | Fecha de creación                            |
+| `accepted_at`| timestamptz  | SÍ       |                        | Fecha de aceptación                          |
+
+**FKs:** `license_id` → licenses, `invited_by` → users
+
+---
+
+### positions
+
+Catálogo de puestos/roles funcionales para usuarios, proyectos u organización.
+
+| Columna      | Tipo         | Nullable | Default                | Descripción                                  |
+|--------------|--------------|----------|------------------------|----------------------------------------------|
+| `id`         | uuid         | NO       | gen_random_uuid()      | PK                                           |
+| `name`       | varchar(100) | NO       |                        | Nombre del puesto                            |
+| `description`| text         | SÍ       |                        | Descripción opcional                         |
+| `created_at` | timestamptz  | NO       | now()                  | Fecha de creación                            |
+
+---
 
 ---
 

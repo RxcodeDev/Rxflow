@@ -15,6 +15,9 @@ export interface WorkspaceMember {
   id: string;
   name: string;
   initials: string;
+  avatar_url?: string | null;
+  avatar_color?: string | null;
+  presence_status?: 'online' | 'away' | 'offline';
 }
 
 export interface WorkspaceSummary extends Workspace {

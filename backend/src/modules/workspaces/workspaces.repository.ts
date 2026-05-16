@@ -21,7 +21,7 @@ const PROJECT_LATERAL_JOINS = `
     FROM tasks WHERE project_id = p.id
   ) ta ON true
   LEFT JOIN LATERAL (
-    SELECT json_agg(json_build_object('initials', u.initials, 'name', u.name) ORDER BY u.name) AS data
+    SELECT json_agg(json_build_object('id', u.id, 'initials', u.initials, 'name', u.name, 'avatar_url', u.avatar_url, 'avatar_color', u.avatar_color, 'presence_status', u.presence_status) ORDER BY u.name) AS data
     FROM project_members pm
     JOIN users u ON u.id = pm.user_id
     WHERE pm.project_id = p.id
@@ -81,7 +81,7 @@ export class WorkspacesRepository {
         COALESCE(mem.data, '[]'::json) AS members
       FROM workspaces w
       LEFT JOIN LATERAL (
-        SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'initials', u.initials) ORDER BY u.name) AS data
+        SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'initials', u.initials, 'avatar_url', u.avatar_url, 'avatar_color', u.avatar_color, 'presence_status', u.presence_status) ORDER BY u.name) AS data
         FROM workspace_members wm
         JOIN users u ON u.id = wm.user_id
         WHERE wm.workspace_id = w.id
@@ -126,7 +126,7 @@ export class WorkspacesRepository {
         COALESCE(mem.data, '[]'::json) AS members
       FROM workspaces w
       LEFT JOIN LATERAL (
-        SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'initials', u.initials) ORDER BY u.name) AS data
+        SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'initials', u.initials, 'avatar_url', u.avatar_url, 'avatar_color', u.avatar_color, 'presence_status', u.presence_status) ORDER BY u.name) AS data
         FROM workspace_members wm
         JOIN users u ON u.id = wm.user_id
         WHERE wm.workspace_id = w.id
@@ -156,11 +156,32 @@ export class WorkspacesRepository {
     icon: string;
     createdBy: string;
   }): Promise<{ id: string }> {
+    // Resolve the creator's license: prefer one they own, else any they belong to.
+    const { rows: licRows } = await this.pool.query(`
+      SELECT l.id
+      FROM licenses l
+      LEFT JOIN license_members lm ON lm.license_id = l.id AND lm.user_id = $1
+      WHERE l.owner_id = $1 OR lm.user_id = $1
+      ORDER BY (l.owner_id = $1) DESC, l.created_at ASC
+      LIMIT 1
+    `, [dto.createdBy]);
+    const licenseId: string | null = licRows[0]?.id ?? null;
+
     const { rows } = await this.pool.query(`
-      INSERT INTO workspaces (name, description, color, icon, created_by)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO workspaces (name, description, color, icon, created_by, license_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id
-    `, [dto.name, dto.description ?? null, dto.color, dto.icon, dto.createdBy]);
+    `, [dto.name, dto.description ?? null, dto.color, dto.icon, dto.createdBy, licenseId]);
+
+    const workspaceId = rows[0].id as string;
+
+    // Creator is always a member so the new workspace is visible to them.
+    await this.pool.query(`
+      INSERT INTO workspace_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+    `, [workspaceId, dto.createdBy]);
+
     return rows[0];
   }
 
