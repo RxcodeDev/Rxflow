@@ -10,7 +10,17 @@
       "Bash(magick -background none public/icon.svg -resize 32x32 tmp32.png)",
       "Bash(magick -background none public/icon.svg -resize 16x16 tmp16.png)",
       "Bash(magick tmp32.png tmp16.png app/favicon.ico)",
-      "Bash(magick -background none public/icon.svg -resize 512x512 public/favicon.png)"
+      "Bash(magick -background none public/icon.svg -resize 512x512 public/favicon.png)",
+      "Bash(sed -n '1,60p' components/ui/SearchSelect.tsx)",
+      "Bash(sed -n '1,40p' components/ui/Tooltip.tsx)",
+      "Bash(grep -E \"^\\\\s{2}[a-z].*:$\" docker-compose.yml)",
+      "Bash(awk 'NR>=499 && NR<=504{printf \"%d: %s\\\\n\", NR, $0}' components/features/tasks/CreateTaskModal.tsx)",
+      "Bash(npx eslint *)",
+      "Bash(npm install *)",
+      "Bash(rm -rf \"app/\\(dashboard\\)/herramientas/wiki/[id]/editar\")",
+      "Bash(grep -n \"router.push\\\\|router.replace\\\\|/editar\\\\|wiki/\\\\${\" \"app/\\(dashboard\\)/herramientas/wiki/nueva/page.tsx\")",
+      "Bash(sed -n '135,165p' components/features/wiki/WikiPageCard.tsx)",
+      "Bash(node -e \"const m=require\\('tiptap-extension-global-drag-handle'\\); console.log\\('default:',typeof m.default,'keys:',Object.keys\\(m\\)\\)\")"
     ]
   }
 }

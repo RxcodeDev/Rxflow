@@ -75,7 +75,7 @@ export class WorkspacesService {
     await this.repo.removeMember(id, userId);
   }
 
-  findUnassignedProjects() {
-    return this.repo.findUnassignedProjects();
+  findUnassignedProjects(userId: string) {
+    return this.repo.findUnassignedProjects(userId);
   }
 }

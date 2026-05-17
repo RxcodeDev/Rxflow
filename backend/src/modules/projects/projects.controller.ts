@@ -8,6 +8,7 @@ interface CreateProjectDto {
   code: string;
   description?: string;
   methodology?: string;
+  extra_views?: string[];
 }
 
 interface UpdateProjectDto {

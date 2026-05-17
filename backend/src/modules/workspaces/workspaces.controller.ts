@@ -21,8 +21,8 @@ export class WorkspacesController {
   }
 
   @Get('unassigned-projects')
-  findUnassignedProjects() {
-    return this.svc.findUnassignedProjects();
+  findUnassignedProjects(@CurrentUser() user: AuthUser) {
+    return this.svc.findUnassignedProjects(user.id);
   }
 
   @Get(':id')

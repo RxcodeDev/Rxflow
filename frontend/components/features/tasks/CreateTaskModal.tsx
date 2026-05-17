@@ -1,21 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import TaskForm from '@/components/features/tasks/TaskForm';
+import ProjectForm from '@/components/features/projects/ProjectForm';
 import { useUIState, useUIDispatch } from '@/store/UIContext';
 import { closeCreateModal, bumpProjects } from '@/store/slices/uiSlice';
-import { apiGet, apiPost, ApiError } from '@/lib/api';
-import type { ProjectSummary, ApiWrapped, WorkspaceSummary } from '@/types/api.types';
+import { apiPost } from '@/lib/api';
 import { playSuccess } from '@/hooks/useSound';
-import { useDebounce } from '@/hooks/useDebounce';
-
-const METHODOLOGIES = ['Scrum', 'Kanban', 'Shape Up'] as const;
-type Methodology = (typeof METHODOLOGIES)[number];
 
 /* ── Shared styles ───────────────────────────────────── */
 const baseCls =
@@ -49,43 +44,6 @@ function Field({
       {children}
       {hint && <p className="text-[0.7rem] text-[var(--c-muted)]">{hint}</p>}
     </div>
-  );
-}
-
-/* ── Pill group (used by ProjectForm) ───────────────────── */
-function PillGroup<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-  hint,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T;
-  onChange: (v: T) => void;
-  hint?: string;
-}) {
-  return (
-    <Field label={label} hint={hint}>
-      <div className="flex flex-wrap gap-2">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => onChange(opt)}
-            className={
-              'text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer font-[inherit] ' +
-              (opt === value
-                ? 'border-[var(--c-text)] bg-[var(--c-hover)] text-[var(--c-text)] font-semibold'
-                : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)]')
-            }
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </Field>
   );
 }
 
@@ -241,264 +199,6 @@ function WorkspaceForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* ── Project form ────────────────────────────────────── */
-const METHODOLOGY_MAP: Record<Methodology, string> = {
-  Scrum: 'scrum',
-  Kanban: 'kanban',
-  'Shape Up': 'shape_up',
-};
-
-/* ── Helpers ─────────────────────────────────────────── */
-function generateCandidates(name: string): string[] {
-  const words = name.trim().toUpperCase().replace(/[^A-Z\s]/g, '').split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [];
-  const initials = words.map((w) => w[0]).join('').slice(0, 4);
-  const first = words[0];
-  const set: string[] = [];
-  if (initials.length >= 2) set.push(initials);
-  if (first.length >= 3) set.push(first.slice(0, 3));
-  if (first.length >= 4) set.push(first.slice(0, 4));
-  // letter-only suffixes for collision avoidance (A–Z)
-  const base = (initials.length >= 2 ? initials : first).slice(0, 3);
-  for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') set.push((base + ch).slice(0, 4));
-  return [...new Set(set)].filter((c) => c.length >= 2);
-}
-
-function findFreeCode(candidates: string[], existingCodes: Set<string>): string | null {
-  for (const candidate of candidates) {
-    if (!existingCodes.has(candidate.toUpperCase())) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function ProjectForm({ onClose }: { onClose: () => void }) {
-  const router = useRouter();
-  const dispatch = useUIDispatch();
-  const [name, setName] = useState('');
-  const [nameError, setNameError] = useState('');
-  const [identifier, setIdentifier] = useState('');
-  const [identifierTouched, setIdentifierTouched] = useState(false);
-  const [identifierError, setIdentifierError] = useState('');
-  const [identifierChecking, setIdentifierChecking] = useState(false);
-  const [description, setDescription] = useState('');
-  const [methodology, setMethodology] = useState<Methodology>('Scrum');
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
-  const [allProjects, setAllProjects] = useState<ProjectSummary[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-
-  const debouncedIdentifier = useDebounce(identifier, 450);
-  const debouncedName = useDebounce(name, 400);
-
-  useEffect(() => {
-    apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
-      .then((r) => setWorkspaces(r.data))
-      .catch(() => { /* non-blocking */ });
-    apiGet<ApiWrapped<ProjectSummary[]>>('/projects')
-      .then((r) => setAllProjects(r.data))
-      .catch(() => { /* non-blocking */ });
-  }, []);
-
-  /* Validate project name uniqueness */
-  useEffect(() => {
-    if (!debouncedName.trim()) { setNameError(''); return; }
-    const exists = allProjects.some(
-      (p) => p.name.trim().toLowerCase() === debouncedName.trim().toLowerCase()
-    );
-    setNameError(exists ? 'Ya existe un proyecto con ese nombre' : '');
-  }, [debouncedName, allProjects]);
-
-  /* Auto-generate a FREE identifier when name changes (and user hasn't manually edited) */
-  useEffect(() => {
-    if (identifierTouched) return;
-    const candidates = generateCandidates(name);
-    if (candidates.length === 0) { setIdentifier(''); return; }
-    const existingCodes = new Set(allProjects.map((p) => p.code.trim().toUpperCase()));
-    setIdentifierChecking(true);
-    const free = findFreeCode(candidates, existingCodes);
-    setIdentifier(free ?? candidates[0]);
-    setIdentifierError('');
-    setIdentifierChecking(false);
-  }, [name, identifierTouched, allProjects]);
-
-  /* Real-time uniqueness check when user manually edits the identifier */
-  useEffect(() => {
-    if (!identifierTouched) return;
-    if (!debouncedIdentifier || debouncedIdentifier.length < 2) {
-      setIdentifierError('');
-      setIdentifierChecking(false);
-      return;
-    }
-    setIdentifierChecking(true);
-    const exists = allProjects.some(
-      (p) => p.code.trim().toLowerCase() === debouncedIdentifier.trim().toLowerCase(),
-    );
-    setIdentifierError(exists ? 'Este identificador ya está en uso' : '');
-    setIdentifierChecking(false);
-  }, [debouncedIdentifier, identifierTouched, allProjects]);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) { setNameError('El nombre es requerido'); return; }
-    const nameTaken = allProjects.some(
-      (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
-    );
-    if (nameTaken) { setNameError('Ya existe un proyecto con ese nombre'); return; }
-    if (!identifier.trim()) { setIdentifierError('El identificador es requerido'); return; }
-    const identifierTaken = allProjects.some(
-      (p) => p.code.trim().toLowerCase() === identifier.trim().toLowerCase(),
-    );
-    if (identifierTaken) { setIdentifierError('Este identificador ya está en uso'); return; }
-
-    setSubmitting(true);
-    setSubmitError('');
-
-    try {
-      const res = await apiPost<ApiWrapped<{ id: string }>>('/projects', {
-        name: name.trim(),
-        code: identifier,
-        description: description.trim() || undefined,
-        methodology: METHODOLOGY_MAP[methodology],
-      });
-      if (workspaceId && res.data?.id) {
-        await apiPost(`/workspaces/${workspaceId}/projects`, { projectId: res.data.id });
-      }
-      dispatch(bumpProjects());
-      playSuccess();
-      onClose();
-      router.push(`/proyectos/${identifier.toLowerCase()}/board`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al crear el proyecto';
-      if (err instanceof ApiError && /projects_code_key|duplicate key|ya existe|already exists/i.test(msg)) {
-        setIdentifierError('Este identificador ya está en uso');
-      } else {
-        setSubmitError(msg);
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-
-      {/* Nombre */}
-      <Input
-        id="cp-name"
-        label="Nombre del proyecto"
-        placeholder="Ej. Backend API"
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value);
-        }}
-        error={nameError}
-        // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
-        autoComplete="off"
-      />
-
-      {/* Identificador */}
-      <Field
-        label="Identificador"
-        htmlFor="cp-id"
-        hint={
-          identifierChecking
-            ? 'Verificando disponibilidad…'
-            : `Se usará como prefijo de tareas: ${identifier || 'ENG'}-1, ${identifier || 'ENG'}-2…`
-        }
-      >
-        <div className="flex items-center gap-2">
-          <input
-            id="cp-id"
-            type="text"
-            maxLength={4}
-            placeholder="ENG"
-            value={identifier}
-            onChange={(e) => {
-              const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-              setIdentifier(val);
-              setIdentifierTouched(true);
-              setIdentifierError('');
-            }}
-            className={`${baseCls} w-24 font-mono text-center ${identifierError ? 'border-[var(--c-danger)]' : ''}`}
-            autoComplete="off"
-          />
-          {!identifierTouched && identifier && !identifierChecking && (
-            <span className="text-[11px] text-[var(--c-muted)]">Auto-generado</span>
-          )}
-          {identifierChecking && (
-            <span className="text-[11px] text-[var(--c-muted)] animate-pulse">Verificando…</span>
-          )}
-        </div>
-        {identifierError && (
-          <span className="text-[0.75rem] text-[var(--c-danger)]">{identifierError}</span>
-        )}
-        {!identifierError && identifier && !identifierChecking && identifierTouched && (
-          <span className="text-[0.75rem] text-green-600">Disponible ✓</span>
-        )}
-      </Field>
-
-      {/* Descripción */}
-      <Field label="Descripción (opcional)" htmlFor="cp-desc">
-        <textarea
-          id="cp-desc"
-          rows={3}
-          placeholder="¿De qué trata este proyecto?"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className={`${baseCls} resize-none`}
-        />
-      </Field>
-
-      {/* Metodología */}
-      <PillGroup
-        label="Metodología preferida"
-        options={METHODOLOGIES}
-        value={methodology}
-        onChange={(v: Methodology) => setMethodology(v)}
-        hint="Puedes cambiarlo después en configuración"
-      />
-
-      {/* Espacio de trabajo */}
-      {workspaces.length > 0 && (
-        <Field label="Espacio de trabajo" htmlFor="cp-ws">
-          <div className="relative">
-            <select
-              id="cp-ws"
-              value={workspaceId}
-              onChange={(e) => setWorkspaceId(e.target.value)}
-              className={`${baseCls} pr-8 appearance-none cursor-pointer`}
-            >
-              <option value="">Sin espacio de trabajo</option>
-              {workspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>{ws.name}</option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)]" aria-hidden="true">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M2 4l4 4 4-4" />
-              </svg>
-            </span>
-          </div>
-        </Field>
-      )}
-
-      {submitError && <p className="text-[0.75rem] text-[var(--c-danger)]">{submitError}</p>}
-
-      <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-[var(--c-border)]">
-        <Button type="button" variant="ghost" style={{ width: 'auto' }} onClick={onClose}>
-          Cancelar
-        </Button>
-        <Button type="submit" variant="primary" style={{ width: 'auto' }} loading={submitting}>
-          Crear proyecto
-        </Button>
-      </div>
-    </form>
-  );
-}
 
 /* ── Main export ─────────────────────────────────────── */
 const MODAL_TITLES = {
@@ -547,7 +247,7 @@ export default function CreateTaskModal() {
       {createModalContext === 'workspace' ? (
         <WorkspaceForm onClose={handleClose} />
       ) : createModalContext === 'project' ? (
-        <ProjectForm onClose={handleClose} />
+        <ProjectForm mode="create" onClose={handleClose} />
       ) : createModalContext === 'task' ? (
         <TaskForm context={createModalContext} onCancel={handleClose} submitLabel="Crear tarea" />
       ) : null}

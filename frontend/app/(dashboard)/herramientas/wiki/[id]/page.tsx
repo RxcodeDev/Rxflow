@@ -1,61 +1,192 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiDelete, apiGet, apiPatch } from '@/lib/api';
-import type { ApiWrapped, WikiPageDetail, WorkspaceSummary } from '@/types/api.types';
-import WikiRelationBadges from '@/components/features/wiki/WikiRelationBadges';
-import { renderWikiIcon } from '@/components/features/wiki/wikiIcons';
 import dynamic from 'next/dynamic';
+import { apiDelete, apiGet, apiPatch } from '@/lib/api';
+import type { ApiWrapped, EpicItem, WikiPageDetail, WikiPageSummary, WorkspaceSummary, TaskItem } from '@/types/api.types';
+import TaskSearchSelect, { type TaskWithProject } from '@/components/features/wiki/TaskSearchSelect';
+import SearchSelect from '@/components/ui/SearchSelect';
+import EmojiPicker from '@/components/features/wiki/EmojiPicker';
+import WikiHistoryPanel from '@/components/features/wiki/WikiHistoryPanel';
 
-const WikiViewer = dynamic(() => import('@/components/features/wiki/WikiViewer'), { ssr: false });
+const WikiEditor = dynamic(() => import('@/components/features/wiki/WikiEditor'), { ssr: false });
 
-export default function WikiDetailPage() {
+/* ── Shared styles ───────────────────────────────────────────────── */
+const labelCls = 'text-[0.7rem] font-semibold text-[var(--c-text-sub)] tracking-[0.04em] uppercase';
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className={labelCls}>{label}</span>
+      {children}
+    </div>
+  );
+}
+
+type LinkType = '' | 'tarea' | 'epica' | 'proyecto';
+type EpicWithProject = EpicItem & { projectCode: string; projectName: string };
+
+const LINK_TYPES: Array<{ value: Exclude<LinkType, ''>; label: string; icon: ReactNode }> = [
+  { value: 'tarea',   label: 'Tarea',    icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><polyline points="9 12 11 14 15 10" /></svg> },
+  { value: 'epica',   label: 'Épica',    icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg> },
+  { value: 'proyecto',label: 'Proyecto', icon: <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg> },
+];
+
+function dedupeByKey<T>(items: T[], getKey: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+export default function WikiPageView() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+
   const [page, setPage] = useState<WikiPageDetail | null>(null);
-  const [workspaceName, setWorkspaceName] = useState<string>('');
   const [loading, setLoading] = useState(true);
+
+  // Editable state
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState<Record<string, unknown>>({ type: 'doc', content: [] });
+  const [icon, setIcon] = useState<string>('');
+  const [parentPageId, setParentPageId] = useState<string>('');
+  const [workspaceId, setWorkspaceId] = useState<string>('');
+  const [projectCode, setProjectCode] = useState<string>('');
+  const [taskId, setTaskId] = useState<string>('');
+  const [epicId, setEpicId] = useState<string>('');
+  const [linkType, setLinkType] = useState<LinkType>('');
+
+  // Support data
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [parentPages, setParentPages] = useState<WikiPageSummary[]>([]);
+  const [allTasks, setAllTasks] = useState<TaskWithProject[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [allEpics, setAllEpics] = useState<EpicWithProject[]>([]);
+  const [epicsLoading, setEpicsLoading] = useState(false);
+
+  // UI state
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [relationsOpen, setRelationsOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
-  const mobileActionsRef = useRef<HTMLDivElement>(null);
+
+  const loadedRef = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const allProjects = useMemo(
+    () => dedupeByKey(
+      workspaces.flatMap(ws => ws.projects.map(p => ({ ...p, workspaceId: ws.id }))),
+      (project) => project.code,
+    ),
+    [workspaces],
+  );
+
+  /* ── Initial load ──────────────────────────────────────────────── */
+  const loadPage = (markLoaded = true) => {
+    return apiGet<ApiWrapped<WikiPageDetail>>(`/wiki/${id}`).then(r => {
+      if (!r.ok) { router.replace('/herramientas/wiki'); return; }
+      const p = r.data;
+      setPage(p);
+      setTitle(p.title);
+      setContent(p.content as Record<string, unknown>);
+      setIcon(p.icon ?? '');
+      setParentPageId(p.parent_page_id ?? '');
+      setWorkspaceId(p.workspace_id);
+      setProjectCode(p.project_code ?? '');
+      setTaskId(p.task_id ?? '');
+      setEpicId(p.epic_id ?? '');
+      const initLink: LinkType = p.task_id ? 'tarea' : p.epic_id ? 'epica' : p.project_code ? 'proyecto' : '';
+      setLinkType(initLink);
+      if (markLoaded) loadedRef.current = true;
+    });
+  };
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    apiGet<ApiWrapped<WikiPageDetail>>(`/wiki/${id}`)
-      .then(r => {
-        if (r.ok) {
-          setPage(r.data);
-          // Resolve workspace name
-          apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces')
-            .then(wr => {
-              if (wr.ok) {
-                const ws = wr.data.find(w => w.id === r.data.workspace_id);
-                if (ws) setWorkspaceName(ws.name);
-              }
-            })
-            .catch(() => {});
-        }
-      })
+    Promise.all([
+      loadPage(),
+      apiGet<ApiWrapped<WorkspaceSummary[]>>('/workspaces').then(r => { if (r.ok) setWorkspaces(r.data); }).catch(() => {}),
+    ])
       .catch(() => router.replace('/herramientas/wiki'))
       .finally(() => setLoading(false));
-  }, [id, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   useEffect(() => {
-    if (!mobileActionsOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (mobileActionsRef.current && !mobileActionsRef.current.contains(event.target as Node)) {
-        setMobileActionsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [mobileActionsOpen]);
+    if (!workspaceId) { setParentPages([]); return; }
+    apiGet<ApiWrapped<WikiPageSummary[]>>(`/wiki?workspaceId=${workspaceId}`)
+      .then(r => { if (r.ok) setParentPages(r.data.filter(p => p.id !== id)); })
+      .catch(() => setParentPages([]));
+  }, [workspaceId, id]);
 
+  useEffect(() => {
+    if (allProjects.length === 0) { setAllTasks([]); return; }
+    setTasksLoading(true);
+    Promise.all(
+      allProjects.map(p =>
+        apiGet<ApiWrapped<TaskItem[]>>(`/tasks?projectCode=${p.code}`)
+          .then(r => r.ok ? r.data.map((t): TaskWithProject => ({ ...t, projectCode: p.code, projectName: p.name })) : [])
+          .catch(() => []),
+      ),
+    ).then(results => {
+      setAllTasks(dedupeByKey(results.flat(), (task) => task.id));
+      setTasksLoading(false);
+    });
+  }, [allProjects]);
+
+  useEffect(() => {
+    if (allProjects.length === 0) { setAllEpics([]); return; }
+    setEpicsLoading(true);
+    Promise.all(
+      allProjects.map(p =>
+        apiGet<ApiWrapped<EpicItem[]>>(`/projects/${p.code}/epics`)
+          .then(r => r.ok ? r.data.map((e): EpicWithProject => ({ ...e, projectCode: p.code, projectName: p.name })) : [])
+          .catch(() => []),
+      ),
+    ).then(results => {
+      setAllEpics(dedupeByKey(results.flat(), (epic) => epic.id));
+      setEpicsLoading(false);
+    });
+  }, [allProjects]);
+
+  /* ── Debounced autosave (Notion-style) ─────────────────────────── */
+  useEffect(() => {
+    if (!loadedRef.current || !id) return;
+    setSaveStatus('saving');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await apiPatch(`/wiki/${id}`, {
+          title: title.trim() || 'Sin título',
+          content,
+          icon: icon || null,
+          parentPageId: parentPageId || null,
+          projectCode: projectCode || null,
+          taskId: taskId || null,
+          epicId: epicId || null,
+        });
+        setSaveStatus('saved');
+      } catch {
+        setSaveStatus('error');
+      }
+    }, 1200);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, content, icon, parentPageId, projectCode, taskId, epicId]);
+
+  /* ── Actions ───────────────────────────────────────────────────── */
   const handleArchive = async () => {
     if (!page) return;
     setArchiving(true);
@@ -79,57 +210,19 @@ export default function WikiDetailPage() {
     }
   };
 
-  const handlePrint = () => {
-    const el = document.getElementById('wiki-print-area');
-    if (!el) return;
-
-    const styles = Array.from(document.querySelectorAll('style'))
-      .map(s => s.outerHTML)
-      .join('');
-
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>${page?.title ?? 'Wiki'}</title>
-  ${styles}
-  <style>
-    @page { margin: 2cm 2.5cm; }
-    body { margin: 0; background: #fff; color: #111; font-family: system-ui, sans-serif; }
-    img { max-width: 100% !important; }
-    a { color: inherit; }
-    pre { white-space: pre-wrap; }
-    h1 { font-size: 24pt; } h2 { font-size: 18pt; } h3 { font-size: 14pt; }
-    p, li { font-size: 11pt; line-height: 1.6; }
-  </style>
-</head>
-<body>${el.innerHTML}</body>
-</html>`;
-
-    // Create hidden iframe, print inside it, then remove it
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;inset:0;width:0;height:0;border:none;visibility:hidden;';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
-    if (!doc) { document.body.removeChild(iframe); return; }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    iframe.onload = () => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      // Remove after a short delay to allow the print dialog to open
-      setTimeout(() => document.body.removeChild(iframe), 1000);
-    };
+  const handleRestored = async () => {
+    setHistoryOpen(false);
+    loadedRef.current = false;
+    await loadPage();
+    setSaveStatus('saved');
   };
 
-  /* ── Loading skeleton ───────────────────────────────────────────────────── */
+  /* ── Loading skeleton ──────────────────────────────────────────── */
   if (loading) {
     return (
       <div className="h-full overflow-y-auto px-4 py-5 space-y-5 md:px-6 md:py-6">
         <div className="h-4 w-24 bg-[var(--c-hover)] rounded animate-pulse" />
         <div className="h-9 w-80 bg-[var(--c-hover)] rounded animate-pulse" />
-        <div className="h-4 w-44 bg-[var(--c-hover)] rounded animate-pulse" />
         <div className="space-y-2 pt-6">
           {[90, 75, 85, 60, 70].map((w, i) => (
             <div key={i} className="h-4 bg-[var(--c-hover)] rounded animate-pulse" style={{ width: `${w}%` }} />
@@ -141,11 +234,16 @@ export default function WikiDetailPage() {
 
   if (!page) return null;
 
-  return (
-    <div className="h-full overflow-y-auto px-4 py-5 md:px-6 md:py-6">
+  const statusLabel =
+    saveStatus === 'saving' ? 'Guardando…'
+    : saveStatus === 'saved' ? 'Todos los cambios guardados'
+    : saveStatus === 'error' ? 'Error al guardar' : '';
 
-      {/* ── Back button ───────────────────────────────────────────────────── */}
-      <div className="mb-6 flex items-center justify-between gap-3">
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--c-bg)]">
+
+      {/* ── Top bar ───────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-20 flex shrink-0 items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-bg)] px-4 py-3">
         <Link
           href="/herramientas/wiki"
           className="inline-flex min-w-0 items-center gap-1.5 text-sm text-[var(--c-text-sub)] hover:text-[var(--c-text)] transition-colors group"
@@ -157,162 +255,91 @@ export default function WikiDetailPage() {
           <span className="truncate">Volver a Wiki</span>
         </Link>
 
-        <div ref={mobileActionsRef} className="relative md:hidden">
+        <span
+          className={[
+            'ml-2 hidden text-xs sm:inline transition-colors',
+            saveStatus === 'error' ? 'text-[var(--c-danger)]' : 'text-[var(--c-muted)]',
+          ].join(' ')}
+        >
+          {statusLabel}
+        </span>
+
+        <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setMobileActionsOpen((open) => !open)}
-            aria-label="Abrir acciones"
-            aria-expanded={mobileActionsOpen}
-            className={[
-              'flex h-10 w-10 items-center justify-center rounded-xl border transition-colors',
-              mobileActionsOpen
-                ? 'border-[var(--c-text)] bg-[var(--c-text)] text-[var(--c-bg)] shadow-[0_8px_22px_rgba(0,0,0,0.12)]'
-                : 'border-[var(--c-border)] bg-[var(--c-bg)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)]',
-            ].join(' ')}
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-[var(--c-border)] px-3 py-2 text-xs font-medium text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-              <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
-              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-              <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+              <path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" />
             </svg>
+            <span className="hidden sm:inline">Historial</span>
           </button>
 
-          {mobileActionsOpen && (
-            <div className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-52 overflow-hidden rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] shadow-[0_18px_38px_rgba(0,0,0,0.14)]">
-              <Link
-                href={`/herramientas/wiki/${page.id}/editar`}
-                onClick={() => setMobileActionsOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-hover)]"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-                Editar página
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileActionsOpen(false);
-                  handlePrint();
-                }}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-hover)]"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                  <polyline points="6 9 6 2 18 2 18 9" />
-                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                  <rect x="6" y="14" width="12" height="8" />
-                </svg>
-                Exportar PDF
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileActionsOpen(false);
-                  void handleArchive();
-                }}
-                disabled={archiving}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--c-text)] transition-colors hover:bg-[var(--c-hover)] disabled:opacity-50"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                  <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
-                  <line x1="10" y1="12" x2="14" y2="12" />
-                </svg>
-                {archiving ? 'Procesando...' : page.is_archived ? 'Restaurar' : 'Archivar'}
-              </button>
-
-              <div className="h-px bg-[var(--c-border)]" />
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileActionsOpen(false);
-                  setConfirmDelete(true);
-                }}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-[var(--c-danger)] transition-colors hover:bg-red-50"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14H6L5 6" />
-                  <path d="M10 11v6" /><path d="M14 11v6" />
-                  <path d="M9 6V4h6v2" />
-                </svg>
-                Eliminar página
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(o => !o)}
+            aria-pressed={settingsOpen}
+            className={[
+              'flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition-colors',
+              settingsOpen
+                ? 'border-[var(--c-text)] bg-[var(--c-text)] text-[var(--c-bg)]'
+                : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)]',
+            ].join(' ')}
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            <span className="hidden sm:inline">Ajustes</span>
+          </button>
         </div>
       </div>
 
-      {/* ── Two-column layout ─────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-5 md:flex-row md:gap-8 md:items-start">
+      {/* ── Archived banner ───────────────────────────────────────── */}
+      {page.is_archived && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-400">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+            <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
+          </svg>
+          Esta página está archivada
+        </div>
+      )}
 
-        {/* ── Main content ─────────────────────────────────────────────── */}
-        <div className="order-2 flex-1 min-w-0 md:order-1" id="wiki-print-area">
+      {/* ── Body ──────────────────────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
 
-          {/* Archived banner */}
-          {page.is_archived && (
-            <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400">
-              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
-              </svg>
-              Esta página está archivada
-            </div>
-          )}
+        {/* Editor */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3">
+          <WikiEditor
+            content={content}
+            onChange={setContent}
+            onTitleChange={setTitle}
+            title={title}
+            icon={icon || undefined}
+            placeholder="Escribe aquí. Usa / para insertar bloques…"
+          />
 
-          {/* Title */}
-          <div className="flex items-start gap-3 mb-3">
-            {page.icon && (
-              <span className="mt-0.5 shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--c-hover)] text-[var(--c-text-sub)]">
-                {renderWikiIcon(page.icon, 22)}
-              </span>
-            )}
-            <h1 className="text-[2rem] font-bold text-[var(--c-text)] leading-[1.06] break-words md:text-3xl">
-              {page.title}
-            </h1>
-          </div>
-
-          {/* Relation badges */}
-          <WikiRelationBadges page={page} labels={{ workspace: workspaceName || undefined }} />
-
-          {/* Meta */}
-          <p className="mt-3 text-xs text-[var(--c-muted)]">
-            Actualizado {new Date(page.updated_at).toLocaleDateString('es-MX', {
-              day: 'numeric', month: 'long', year: 'numeric',
-            })}
-          </p>
-
-          <hr className="my-6 border-[var(--c-line)]" />
-
-          {/* Content */}
-          <WikiViewer content={page.content} />
-
-          {/* Subpages inline at bottom */}
+          {/* Subpages */}
           {page.children.length > 0 && (
-            <div className="mt-10 pt-8 border-t border-[var(--c-border)]">
-              <h2 className="text-sm font-semibold text-[var(--c-text-sub)] uppercase tracking-wider mb-4">
+            <div className="mt-4 border-t border-[var(--c-border)] pt-4">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--c-text-sub)]">
                 Subpáginas
               </h2>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {page.children.map(child => (
                   <li key={child.id}>
                     <Link
                       href={`/herramientas/wiki/${child.id}`}
-                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] hover:bg-[var(--c-hover)] hover:border-[var(--c-text-sub)] transition-all text-sm text-[var(--c-text)] group"
+                      className="group flex items-center gap-2.5 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2.5 text-sm text-[var(--c-text)] transition-all hover:border-[var(--c-text-sub)] hover:bg-[var(--c-hover)]"
                     >
-                      <span className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-[var(--c-hover)] group-hover:bg-[var(--c-active-pill)] transition-colors">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--c-hover)]">
                         <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                           <polyline points="14 2 14 8 20 8" />
                         </svg>
                       </span>
                       <span className="truncate font-medium">{child.title}</span>
-                      <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
-                        className="ml-auto shrink-0 opacity-0 group-hover:opacity-60 transition-opacity">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
                     </Link>
                   </li>
                 ))}
@@ -321,96 +348,190 @@ export default function WikiDetailPage() {
           )}
         </div>
 
-        {/* ── Sidebar ──────────────────────────────────────────────────── */}
-        <aside className="order-1 hidden w-full shrink-0 space-y-3 md:order-2 md:block md:w-52 md:sticky md:top-6">
+        {/* Settings sidebar */}
+        {settingsOpen && (
+          <aside className="w-72 shrink-0 overflow-y-auto border-l border-[var(--c-border)] bg-[var(--c-bg)] p-4">
+            <div className="space-y-4">
+              <Field label="Workspace">
+                <SearchSelect
+                  options={workspaces.map(ws => ({ value: ws.id, label: ws.name }))}
+                  value={workspaceId}
+                  onChange={setWorkspaceId}
+                  placeholder="Selecciona workspace..."
+                  noneLabel="— ninguno —"
+                  searchPlaceholder="Buscar workspace..."
+                />
+              </Field>
 
-          {/* Primary action */}
-          <Link
-            href={`/herramientas/wiki/${page.id}/editar`}
-            className="flex items-center justify-center gap-2 w-full px-4 py-3 text-sm font-medium bg-[var(--c-text)] text-[var(--c-bg)] rounded-xl hover:opacity-80 transition-opacity"
-          >
-            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-            Editar página
-          </Link>
+              <Field label="Icono">
+                <EmojiPicker value={icon} onChange={setIcon} />
+              </Field>
 
-          {/* Export PDF */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex items-center justify-center gap-2 w-full px-4 py-3 text-sm font-medium border border-[var(--c-border)] text-[var(--c-text-sub)] rounded-xl hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors"
-          >
-            <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-            Exportar PDF
-          </button>
+              <Field label="Proceso padre">
+                <SearchSelect
+                  options={parentPages.map(p => ({ value: p.id, label: p.title }))}
+                  value={parentPageId}
+                  onChange={setParentPageId}
+                  placeholder="— ninguno (raíz) —"
+                  noneLabel="— ninguno (raíz) —"
+                  searchPlaceholder="Buscar proceso padre..."
+                  disabled={parentPages.length === 0}
+                />
+              </Field>
 
-          {/* Secondary actions */}
-          <div className="flex flex-col rounded-xl border border-[var(--c-border)] overflow-hidden bg-[var(--c-bg)]">
-            <button
-              type="button"
-              onClick={handleArchive}
-              disabled={archiving}
-              className="flex items-center gap-2.5 px-3.5 py-3 text-sm text-[var(--c-text-sub)] hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] transition-colors disabled:opacity-50 text-left"
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
-                <line x1="10" y1="12" x2="14" y2="12" />
-              </svg>
-              {archiving ? 'Procesando...' : page.is_archived ? 'Restaurar' : 'Archivar'}
-            </button>
-            <div className="h-px bg-[var(--c-border)]" />
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-2.5 px-3.5 py-3 text-sm text-[var(--c-danger)] hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors text-left"
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14H6L5 6" />
-                <path d="M10 11v6" /><path d="M14 11v6" />
-                <path d="M9 6V4h6v2" />
-              </svg>
-              Eliminar
-            </button>
-          </div>
+              <hr className="border-[var(--c-border)]" />
 
-          {/* Breadcrumb path */}
-          {page.breadcrumb && page.breadcrumb.length > 1 && (
-            <div className="rounded-xl border border-[var(--c-border)] p-3 space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--c-muted)] mb-2">Ubicación</p>
-              {/* All ancestors (all crumbs except last, which is the current page) */}
-              {page.breadcrumb.slice(0, -1).map((crumb, i) => (
-                <Link
-                  key={crumb.id}
-                  href={`/herramientas/wiki/${crumb.id}`}
-                  className="flex items-center gap-1.5 text-xs text-[var(--c-text-sub)] hover:text-[var(--c-text)] transition-colors"
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setRelationsOpen(o => !o)}
+                  className="flex w-full items-center justify-between"
                 >
-                  <span className="opacity-50">{'›'.repeat(i + 1)}</span>
-                  <span className="truncate">{crumb.title}</span>
-                </Link>
-              ))}
-              {/* Current page */}
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--c-text)] pl-0.5">
-                <span className="opacity-50">{'›'.repeat(page.breadcrumb.length)}</span>
-                <span className="truncate">{page.title}</span>
+                  <span className={labelCls}>Vincular a</span>
+                  <svg
+                    viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true"
+                    className={`text-[var(--c-text-sub)] transition-transform ${relationsOpen ? 'rotate-180' : ''}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {relationsOpen && (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {LINK_TYPES.map(lt => (
+                        <button
+                          key={lt.value}
+                          type="button"
+                          onClick={() => {
+                            const next: LinkType = linkType === lt.value ? '' : lt.value;
+                            setLinkType(next);
+                            if (next !== 'tarea') setTaskId('');
+                            if (next !== 'epica') setEpicId('');
+                            if (next !== 'proyecto') setProjectCode('');
+                          }}
+                          className={[
+                            'flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                            linkType === lt.value
+                              ? 'border-[var(--c-text)] bg-[var(--c-text)] text-[var(--c-bg)]'
+                              : 'border-[var(--c-border)] text-[var(--c-text-sub)] hover:border-[var(--c-text-sub)] hover:text-[var(--c-text)]',
+                          ].join(' ')}
+                        >
+                          {lt.icon}
+                          {lt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {linkType === 'tarea' && (
+                      <Field label="Tarea">
+                        <TaskSearchSelect
+                          tasks={allTasks}
+                          value={taskId}
+                          onChange={(tId, task) => {
+                            setTaskId(tId);
+                            if (task) setProjectCode(task.projectCode);
+                          }}
+                          loading={tasksLoading}
+                        />
+                      </Field>
+                    )}
+
+                    {linkType === 'epica' && (
+                      <Field label="Épica">
+                        <SearchSelect
+                          options={allEpics.map(e => ({ value: e.id, label: e.name, subLabel: e.projectName, colorKey: e.projectCode }))}
+                          value={epicId}
+                          onChange={setEpicId}
+                          loading={epicsLoading}
+                          noneLabel="— ninguna —"
+                          searchPlaceholder="Buscar épica..."
+                        />
+                      </Field>
+                    )}
+
+                    {linkType === 'proyecto' && (
+                      <Field label="Proyecto">
+                        <SearchSelect
+                          options={allProjects.map(p => ({ value: p.code, label: p.name }))}
+                          value={projectCode}
+                          onChange={setProjectCode}
+                          noneLabel="— ninguno —"
+                          searchPlaceholder="Buscar proyecto..."
+                        />
+                      </Field>
+                    )}
+                  </div>
+                )}
               </div>
+
+              <hr className="border-[var(--c-border)]" />
+
+              {/* Danger / lifecycle */}
+              <div className="flex flex-col overflow-hidden rounded-xl border border-[var(--c-border)]">
+                <button
+                  type="button"
+                  onClick={handleArchive}
+                  disabled={archiving}
+                  className="flex items-center gap-2.5 px-3.5 py-3 text-left text-sm text-[var(--c-text-sub)] transition-colors hover:bg-[var(--c-hover)] hover:text-[var(--c-text)] disabled:opacity-50"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                    <polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" />
+                    <line x1="10" y1="12" x2="14" y2="12" />
+                  </svg>
+                  {archiving ? 'Procesando...' : page.is_archived ? 'Restaurar' : 'Archivar'}
+                </button>
+                <div className="h-px bg-[var(--c-border)]" />
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-2.5 px-3.5 py-3 text-left text-sm text-[var(--c-danger)] transition-colors hover:bg-red-50 dark:hover:bg-red-950/20"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="2" aria-hidden="true">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v6" /><path d="M14 11v6" />
+                    <path d="M9 6V4h6v2" />
+                  </svg>
+                  Eliminar página
+                </button>
+              </div>
+
+              {page.breadcrumb && page.breadcrumb.length > 1 && (
+                <div className="rounded-xl border border-[var(--c-border)] p-3 space-y-1">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--c-muted)]">Ubicación</p>
+                  {page.breadcrumb.slice(0, -1).map((crumb, i) => (
+                    <Link
+                      key={crumb.id}
+                      href={`/herramientas/wiki/${crumb.id}`}
+                      className="flex items-center gap-1.5 text-xs text-[var(--c-text-sub)] transition-colors hover:text-[var(--c-text)]"
+                    >
+                      <span className="opacity-50">{'›'.repeat(i + 1)}</span>
+                      <span className="truncate">{crumb.title}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </aside>
+          </aside>
+        )}
       </div>
 
-      {/* ── Delete confirmation dialog ─────────────────────────────────────── */}
+      {/* ── History panel ─────────────────────────────────────────── */}
+      {historyOpen && (
+        <WikiHistoryPanel
+          pageId={page.id}
+          onClose={() => setHistoryOpen(false)}
+          onRestored={handleRestored}
+        />
+      )}
+
+      {/* ── Delete confirmation ───────────────────────────────────── */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-[var(--c-bg)] rounded-2xl p-6 w-full max-w-sm shadow-xl border border-[var(--c-border)]">
-            <h3 className="font-semibold text-[var(--c-text)] mb-2">¿Eliminar página?</h3>
-            <p className="text-sm text-[var(--c-text-sub)] mb-5">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-6 shadow-xl">
+            <h3 className="mb-2 font-semibold text-[var(--c-text)]">¿Eliminar página?</h3>
+            <p className="mb-5 text-sm text-[var(--c-text-sub)]">
               Esta acción no se puede deshacer. Las subpáginas quedarán huérfanas.
             </p>
             <div className="flex gap-3">
@@ -418,14 +539,14 @@ export default function WikiDetailPage() {
                 type="button"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="flex-1 py-2 bg-[var(--c-danger)] text-white text-sm font-medium rounded-lg hover:opacity-80 disabled:opacity-50 transition-opacity"
+                className="flex-1 rounded-lg bg-[var(--c-danger)] py-2 text-sm font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50"
               >
                 {deleting ? 'Eliminando...' : 'Sí, eliminar'}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
-                className="flex-1 py-2 text-sm border border-[var(--c-border)] rounded-lg hover:bg-[var(--c-hover)] text-[var(--c-text-sub)] transition-colors"
+                className="flex-1 rounded-lg border border-[var(--c-border)] py-2 text-sm text-[var(--c-text-sub)] transition-colors hover:bg-[var(--c-hover)]"
               >
                 Cancelar
               </button>

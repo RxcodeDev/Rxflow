@@ -238,15 +238,29 @@ export class WorkspacesRepository {
     `, [workspaceId, userId]);
   }
 
-  /** All projects not yet assigned to any workspace */
-  async findUnassignedProjects() {
+  /** All projects not yet assigned to any workspace, scoped to the user's license */
+  async findUnassignedProjects(userId: string) {
     const { rows } = await this.pool.query(`
       SELECT ${PROJECT_SUMMARY_FIELDS}
       FROM projects p
       ${PROJECT_LATERAL_JOINS}
       WHERE p.id NOT IN (SELECT project_id FROM workspace_projects)
+        AND (
+          p.created_by = $1
+          OR EXISTS (
+            SELECT 1 FROM project_members pm
+            WHERE pm.project_id = p.id AND pm.user_id = $1
+          )
+          OR EXISTS (
+            SELECT 1 FROM licenses l
+            LEFT JOIN license_members lm_cur ON lm_cur.license_id = l.id AND lm_cur.user_id = $1
+            LEFT JOIN license_members lm_cre ON lm_cre.license_id = l.id AND lm_cre.user_id = p.created_by
+            WHERE (l.owner_id = $1 OR lm_cur.user_id IS NOT NULL)
+              AND (l.owner_id = p.created_by OR lm_cre.user_id IS NOT NULL)
+          )
+        )
       ORDER BY p.created_at ASC
-    `);
+    `, [userId]);
     return rows;
   }
 }

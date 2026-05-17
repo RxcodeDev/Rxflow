@@ -10,10 +10,9 @@ import TextStyle from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
+import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { ResizableImage } from './ResizableImage';
-import { TiptapViewer } from './WikiViewer';
 import SlashMenuFloating, { SLASH_COMMANDS, type SlashCommand } from './SlashMenu';
-import { renderWikiIcon } from './wikiIcons';
 import { liftEmptyBlock } from 'prosemirror-commands';
 import { apiGet } from '@/lib/api';
 import type { ApiWrapped, MemberItem } from '@/types/api.types';
@@ -183,11 +182,9 @@ interface UserMention {
 
 type MentionState = { x: number; y: number; query: string; activeIndex: number; items: UserMention[] } | null;
 
-export default function WikiEditor({ content, onChange, onTitleChange, placeholder, title, icon }: WikiEditorProps) {
-  const [previewMode, setPreviewMode] = useState(false);
+export default function WikiEditor({ content, onChange, onTitleChange, placeholder, title }: WikiEditorProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [slashMenu, setSlashMenu] = useState<SlashState>(null);
-  const [lightbox, setLightbox] = useState<string | null>(null);
   const [localTitle, setLocalTitle] = useState(title ?? '');
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [mentionMenu, setMentionMenuInternal] = useState<MentionState>(null);
@@ -270,6 +267,7 @@ export default function WikiEditor({ content, onChange, onTitleChange, placehold
       StarterKit.configure({ dropcursor: false, codeBlock: false }),
       CodeBlockLowlight.configure({ lowlight }),
       ExitBlockOnEnter,
+      GlobalDragHandle.configure({ dragHandleWidth: 20, scrollTreshold: 100 }),
       Dropcursor.configure({ color: '#6366f1', width: 3 }),
       Link.configure({ openOnClick: false, HTMLAttributes: { rel: 'noopener noreferrer' } }),
       Placeholder.configure({ placeholder: placeholder ?? 'Empieza a escribir...' }),
@@ -426,28 +424,7 @@ export default function WikiEditor({ content, onChange, onTitleChange, placehold
       .catch(() => {});
   }, []);
 
-  // Clear lightbox when leaving preview mode
-  useEffect(() => {
-    if (!previewMode) setLightbox(null);
-  }, [previewMode]);
-
-  // Escape to close lightbox
-  useEffect(() => {
-    if (!lightbox) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [lightbox]);
-
   if (!editor) return null;
-
-  const tabCls = (active: boolean) =>
-    [
-      'px-3 py-2 text-xs font-medium transition-colors border-b-2 shrink-0',
-      active
-        ? 'text-[var(--c-text)] border-[var(--c-text)]'
-        : 'text-[var(--c-text-sub)] border-transparent hover:text-[var(--c-text)]',
-    ].join(' ');
 
   const setLink = () => {
     const url = window.prompt('URL del enlace:');
@@ -517,23 +494,9 @@ export default function WikiEditor({ content, onChange, onTitleChange, placehold
         </div>
       )}
 
-      {/* ── Top bar: tabs + toolbar ───────────────────────────────────── */}
+      {/* ── Toolbar (always editable, Notion-style) ───────────────────── */}
       <div className="shrink-0 border-b border-[var(--c-border)] bg-[var(--c-hover)]">
-
-        {/* Tabs */}
-        <div className="flex items-center justify-between gap-2 border-b border-[var(--c-border)] px-2 md:block md:border-b-0 md:border-r md:px-0">
-          <div className="flex items-center overflow-x-auto md:overflow-visible">
-            <button type="button" onClick={() => setPreviewMode(false)} className={tabCls(!previewMode)}>
-              Editar
-            </button>
-            <button type="button" onClick={() => setPreviewMode(true)} className={tabCls(previewMode)}>
-              Vista previa
-            </button>
-          </div>
-        </div>
-
-        {/* Toolbar — only in edit mode */}
-        {!previewMode && (
+        {(
           <div className="overflow-x-auto px-2 py-1.5">
             <div className="flex min-w-max items-center gap-0.5">
             <ToolbarBtn
@@ -722,8 +685,8 @@ export default function WikiEditor({ content, onChange, onTitleChange, placehold
         )}
       </div>
 
-      {/* ── Editor pane (always in DOM, hidden when preview) ──────────── */}
-      <div className={`flex-1 min-h-0 overflow-auto px-4 py-4 md:px-4 md:py-3${previewMode ? ' hidden' : ''}`}>
+      {/* ── Editor pane (always editable) ─────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-auto py-4 pl-9 pr-4 md:py-3">
         {/* Editable title */}
         {onTitleChange !== undefined && (
           <input
@@ -736,34 +699,6 @@ export default function WikiEditor({ content, onChange, onTitleChange, placehold
         )}
         <EditorContent editor={editor} />
       </div>
-
-      {/* ── Preview pane ─────────────────────────────────────────────── */}
-      {previewMode && (
-        <div className="flex-1 min-h-0 overflow-auto px-4 py-5 md:px-5">
-          {title
-            ? (
-              <div className="flex items-center gap-2.5 mb-5">
-                {icon && renderWikiIcon(icon) && (
-                  <span className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-[var(--c-hover)] text-[var(--c-text-sub)]">
-                    {renderWikiIcon(icon, 20)}
-                  </span>
-                )}
-                <h1 className="text-2xl font-bold text-[var(--c-text)] leading-tight">{title}</h1>
-              </div>
-            )
-            : <p className="text-xs text-[var(--c-muted)] italic mb-5">— Sin título —</p>
-          }
-          {editor.isEmpty
-            ? <p className="text-sm text-[var(--c-muted)]">Sin contenido aún.</p>
-            : (
-              <TiptapViewer
-                content={editor.getJSON() as Record<string, unknown>}
-                onLightbox={setLightbox}
-              />
-            )
-          }
-        </div>
-      )}
 
       {/* ── Slash command menu ───────────────────────────────────────── */}
       {slashMenu && slashMenu.items.length > 0 && (
@@ -787,46 +722,6 @@ export default function WikiEditor({ content, onChange, onTitleChange, placehold
           onSelect={insertMention}
           onClose={() => setMention(null)}
         />
-      )}
-
-      {/* ── Lightbox ─────────────────────────────────────────────────── */}
-      {lightbox && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          tabIndex={-1}
-          onClick={() => setLightbox(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setLightbox(null)}
-            aria-label="Cerrar imagen"
-            style={{
-              position: 'absolute', top: 16, right: 16,
-              width: 40, height: 40, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)',
-              color: '#fff', fontSize: 22, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >×</button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightbox}
-            alt=""
-            onClick={e => e.stopPropagation()}
-            style={{
-              maxWidth: '90vw', maxHeight: '90vh',
-              borderRadius: 10,
-              boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
-              userSelect: 'none',
-            }}
-          />
-        </div>
       )}
     </div>
   );

@@ -76,6 +76,31 @@ export class WikiController {
     return this.svc.findByTask(taskId, workspaceId, user.id);
   }
 
+  // ── Versions / history — must come BEFORE :id to avoid route shadowing ───────
+
+  @Get(':id/versions')
+  listVersions(@Param('id') id: string, @CurrentUser() user: SafeUser) {
+    return this.svc.listVersions(id, user.id);
+  }
+
+  @Get(':id/versions/:versionId')
+  getVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: SafeUser,
+  ) {
+    return this.svc.getVersion(id, versionId, user.id);
+  }
+
+  @Post(':id/versions/:versionId/restore')
+  restoreVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @CurrentUser() user: SafeUser,
+  ) {
+    return this.svc.restoreVersion(id, versionId, user.id);
+  }
+
   // ── Single page ──────────────────────────────────────────────────────────────
 
   @Get(':id')

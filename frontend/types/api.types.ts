@@ -174,6 +174,21 @@ export interface WikiPageDetail extends WikiPageSummary {
   breadcrumb: Array<{ id: string; title: string }>;
 }
 
+/** History snapshot metadata (no content — see WikiPageVersionDetail) */
+export interface WikiPageVersionSummary {
+  id: string;
+  title: string;
+  icon: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export interface WikiPageVersionDetail extends WikiPageVersionSummary {
+  page_id: string;
+  workspace_id: string;
+  content: Record<string, unknown>;
+}
+
 export interface LicenseMemberAccessWorkspace {
   id: string;
   name: string;

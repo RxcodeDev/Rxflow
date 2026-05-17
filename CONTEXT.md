@@ -52,7 +52,7 @@ app/(dashboard)/inicio/page.tsx                 ← Dashboard overview ('use cli
 app/(dashboard)/dashboard/page.tsx              ← Vista de dashboard alternativa
 app/(dashboard)/mis-tareas/page.tsx             ← Tareas por status ('use client')
 app/(dashboard)/inbox/page.tsx                  ← Notificaciones
-app/(dashboard)/proyectos/page.tsx              ← Lista de proyectos + menú contextual con Importar/Exportar por proyecto (modal)
+app/(dashboard)/proyectos/page.tsx              ← Proyectos — patrón 100dvh (regla 14): header fijo (título + toolbar + tabs) + scroll solo en el contenido. Buscador en vivo (nombre/código), orden (SearchSelect: nombre/progreso/tareas/estado), toggle Grid/Tabla (persistido en localStorage 'rxflow_projects_view', desktop only — mobile siempre cards), tarjetas con barra de acento por color de código (paletteColor) + progreso con color por % + avatares reales (componente compartido `components/ui/Avatar.tsx`) + estado con dot de color, tabla con cabeceras ordenables; menú contextual Importar/Exportar/Editar/Eliminar
 app/(dashboard)/proyectos/[id]/board/page.tsx   ← Kanban board
 app/(dashboard)/proyectos/[id]/lista/page.tsx   ← Vista lista
 app/(dashboard)/proyectos/[id]/backlog/page.tsx ← Backlog
@@ -62,7 +62,7 @@ app/(dashboard)/proyectos/[id]/tareas/[taskId]/page.tsx ← Detalle de tarea
 app/(dashboard)/cycles/page.tsx                 ← Cycles globales
 app/(dashboard)/miembros/page.tsx               ← Gestión de miembros de licencia — panel split (lista izquierda + detalle derecho), control de acceso por workspace/proyecto por miembro, modal AddMember con 2 modos: "Invitar via link" (genera token) y "Crear cuenta" (formulario completo)
 app/invitar/[token]/page.tsx                    ← Página pública (sin auth) para aceptar invitaciones — muestra info de la licencia/rol, formulario nombre+correo+pwd, auto-login tras aceptar
-app/(dashboard)/espacios/page.tsx               ← Workspaces — panel split (lista izquierda con buscador + detalle derecho), patrón 100dvh, scrolls internos, mobile bottom sheet (h-[88dvh]). Avatares de miembros/equipo siguen el patrón Sidebar (imagen real o inicial con avatar_color) + dot de presencia (online/away/offline). "Asignar proyecto" en la cabecera del detalle, no en footer.
+app/(dashboard)/espacios/page.tsx               ← Workspaces — panel split (lista izquierda con buscador + detalle derecho), patrón 100dvh (regla 14), scrolls internos, mobile bottom sheet (h-[88dvh]). Avatares de miembros/equipo usan el componente compartido `components/ui/Avatar.tsx`. "Asignar proyecto" en la cabecera del detalle, no en footer.
 app/(dashboard)/perfil/page.tsx                 ← Perfil de usuario
 app/(dashboard)/preferencias/page.tsx           ← Preferencias (Server Component)
 app/(dashboard)/integraciones/page.tsx          ← Integraciones (Server Component)
@@ -86,12 +86,14 @@ components/features/wiki/
 components/layouts/Sidebar.tsx    ← Sidebar desktop ('use client')
 components/layouts/Navbar.tsx     ← Bottom nav mobile ('use client')
 components/features/tasks/
-  CreateTaskModal.tsx             ← Modal global — NO montar en páginas individuales; crea tareas asociadas a una épica
+  CreateTaskModal.tsx             ← Modal global — NO montar en páginas individuales; crea tareas asociadas a una épica. La sección "Nuevo proyecto" delega en el componente reciclable `ProjectForm` (mode="create")
   TaskDrawer.tsx                  ← Drawer global — NO montar en páginas individuales; cabecera + propiedades fijas, scroll solo en contenido central, composer de comentarios fijo abajo, menú de 3 puntos para editar/eliminar, modo edición desbloquea título/descripción/asignados/épica/fecha/prioridad y usa calendario popover propio dentro del drawer
 components/features/projects/
   ImportProjectModal.tsx          ← Modal para contexto IA + importación JSON y exportación completa por proyecto
-  EditProjectModal.tsx            ← Editar proyecto — Estado y Metodología como píldoras (punto de color en Estado), Espacio de trabajo con SearchSelect (búsqueda + chip de color), sin <select> nativos
-components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal, SearchSelect, Tooltip
+  ProjectForm.tsx                 ← Formulario reciclable de proyecto (mismo patrón visual para crear y editar). Props discriminadas por `mode`: "create" (identificador editable + auto-generado con chequeo de unicidad, POST /projects + router.push) | "edit" (identificador read-only, Estado, PATCH /projects/:id + onSaved). "Vistas habilitadas" se muestra en AMBOS modos (las vistas por defecto de la metodología quedan marcadas y bloqueadas; el resto opcionales) y se envían como extra_views tanto al crear como al editar. Espacio de trabajo siempre con SearchSelect (sin <select> nativo). Exporta Field, PillGroup, baseCls, METHODOLOGIES
+  EditProjectModal.tsx            ← Wrapper fino: Modal + <ProjectForm mode="edit">. Sin lógica propia
+components/ui/                    ← Button, Input, Card, Modal, Spinner, ConfirmModal, SearchSelect, Tooltip, Avatar
+  Avatar.tsx                      ← Avatar reutilizable (patrón Sidebar): imagen real o inicial con avatar_color + dot de presencia. Props: name, initials, url, color, presence ('online'|'away'|'offline'), size, ring. Exporta Presence y PRESENCE_COLOR. Usar SIEMPRE este componente para avatares de usuario/equipo (no recrear el patrón inline).
 
 store/UIContext.tsx                ← UIProvider, useUIState(), useUIDispatch()
 store/slices/uiSlice.ts           ← openCreateModal, closeCreateModal, openDrawer, closeDrawer, bumpProjects
@@ -193,6 +195,8 @@ GET  /auth/me             [JWT]
 
 GET  /projects            → ProjectSummary[]
 GET  /projects/:code      → ProjectSummary
+POST /projects            { name, code, description?, methodology?, extra_views? }
+PATCH /projects/:id       { name?, description?, methodology?, status?, extra_views? }
 GET  /projects/:code/tasks → TaskItem[]
 GET  /projects/:code/epics → EpicItem[]
 POST /projects/:code/epics { name, description?, parent_epic_id? }
@@ -407,15 +411,20 @@ juan@rxflow.io / audit1234
     - Añadir `pb-[calc(var(--nav-h)+2rem)]` a columnas scrollables que puedan quedar tapadas por el nav mobile.
     ❌ Nunca usar `overflow-y-auto p-5 max-h-[X]` como wrapper del bottom sheet — el scroll externo rompe el scroll interno de los tabs.
 
-14. **Patrón 100dvh (sin scroll general)** — Páginas que deben llenar la pantalla sin scroll del `<main>` padre usan:
+14. **Patrón 100dvh (sin scroll general)** — Páginas que deben llenar la pantalla sin scroll del `<main>` padre.
+    ⛔ **REGLA: el contenedor raíz NUNCA debe ser más alto que el sidebar.** Si lo es, el `<main>` (que es `overflow-auto`) scrollea y el footer del sidebar ("Cerrar sesión") queda desfasado.
+    El root usa `style={{ height: '100dvh' }}` (resuelve siempre; `calc(100%+…)` NO sirve porque `%` no resuelve contra un `<main>` con `flex-grow` y cae a `auto`). `-m-6` cancela el `p-6` del `<main>`.
+    **Lo que realmente evita el desbordamiento NO es el valor del height, sino que TODA la cadena desde el root hasta el área scrolleable lleve `flex-1 min-h-0`** (y `h-full` donde un hijo use `height:100%`). Si un solo wrapper intermedio omite `min-h-0`, su contenido (una lista larga, un panel de detalle) crece, empuja al root y el `<main>` scrollea pasando el sidebar.
     ```tsx
-    // Negates layout's p-6, fills full viewport height
     <div className="-m-6 flex flex-col bg-[var(--c-bg)]" style={{ height: '100dvh' }}>
       <div className="flex-shrink-0 ...">Header</div>
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto ...">Left / main content</div>
-        <aside className="hidden md:flex ... overflow-y-auto border-l ...">Right panel</aside>
+        <div className="flex-1 min-h-0 overflow-y-auto ...">Left / main content</div>
+        {/* panel/columna: cada nivel hasta el scroll lleva min-h-0 (y h-full si el hijo usa h-full) */}
+        <aside className="hidden md:flex flex-1 min-w-0 min-h-0 ...">
+          <div className="flex-1 min-w-0 min-h-0 h-full">{/* Detalle con su propio flex-1 min-h-0 overflow-y-auto */}</div>
+        </aside>
       </div>
     </div>
     ```
-    El `main` del layout tiene `p-6`; el `-m-6` lo cancela. En mobile añadir `pb-[calc(var(--nav-h)+2rem)]` a la columna scrollable para no quedar tapado por el nav.
+    En mobile añadir `pb-[calc(var(--nav-h)+2rem)]` a la columna scrollable para no quedar tapado por el nav.

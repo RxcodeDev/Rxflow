@@ -6,6 +6,7 @@ export interface CreateProjectDto {
   code: string;
   description?: string;
   methodology?: string;
+  extra_views?: string[];
 }
 
 @Injectable()
@@ -28,6 +29,7 @@ export class ProjectsService {
       code: dto.code.toUpperCase(),
       description: dto.description,
       methodology: dto.methodology ?? 'kanban',
+      extra_views: dto.extra_views,
       createdBy: userId,
     });
   }

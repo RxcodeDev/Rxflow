@@ -29,7 +29,9 @@ export class ProjectsRepository {
       ) ta ON true
       LEFT JOIN LATERAL (
         SELECT json_agg(json_build_object(
-          'initials', u.initials, 'name', u.name
+          'id', u.id, 'initials', u.initials, 'name', u.name,
+          'avatar_url', u.avatar_url, 'avatar_color', u.avatar_color,
+          'presence_status', u.presence_status
         ) ORDER BY u.name) AS data
         FROM project_members pm
         JOIN users u ON u.id = pm.user_id
@@ -83,7 +85,9 @@ export class ProjectsRepository {
       ) ta ON true
       LEFT JOIN LATERAL (
         SELECT json_agg(json_build_object(
-          'initials', u.initials, 'name', u.name
+          'id', u.id, 'initials', u.initials, 'name', u.name,
+          'avatar_url', u.avatar_url, 'avatar_color', u.avatar_color,
+          'presence_status', u.presence_status
         ) ORDER BY u.name) AS data
         FROM project_members pm
         JOIN users u ON u.id = pm.user_id
@@ -120,14 +124,22 @@ export class ProjectsRepository {
     code: string;
     description?: string;
     methodology: string;
+    extra_views?: string[];
     createdBy: string;
   }): Promise<ProjectSummary> {
     const pool = this.pool;
     const { rows } = await pool.query(
-      `INSERT INTO projects (name, code, description, methodology, created_by)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO projects (name, code, description, methodology, extra_views, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING code`,
-      [data.name, data.code, data.description ?? null, data.methodology, data.createdBy],
+      [
+        data.name,
+        data.code,
+        data.description ?? null,
+        data.methodology,
+        JSON.stringify(data.extra_views ?? []),
+        data.createdBy,
+      ],
     );
     await pool.query(
       `INSERT INTO project_members (project_id, user_id, role)

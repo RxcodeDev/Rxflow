@@ -10,6 +10,7 @@ import EditProjectModal from '@/components/features/projects/EditProjectModal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { playDelete, playSuccess } from '@/hooks/useSound';
 import { paletteColor } from '@/components/ui/SearchSelect';
+import Avatar from '@/components/ui/Avatar';
 
 /* ── Constants ── */
 const WORKSPACE_COLORS = [
@@ -50,45 +51,6 @@ function WorkspaceIcon({ icon, size = 16, color }: { icon: string; size?: number
   }
 }
 
-/* ── Avatar — same pattern as Sidebar (real image, else colored initials) + live presence ── */
-type Presence = 'online' | 'away' | 'offline';
-const PRESENCE_COLOR: Record<Presence, string> = {
-  online: 'var(--c-success)',
-  away: '#f59e0b',
-  offline: 'var(--c-muted)',
-};
-
-function Avatar({ name, initials, url, color, presence, size = 28, ring = 'var(--c-bg)' }: {
-  name: string;
-  initials: string;
-  url?: string | null;
-  color?: string | null;
-  presence?: Presence;
-  size?: number;
-  ring?: string;
-}) {
-  const dot = Math.max(7, Math.round(size * 0.3));
-  return (
-    <span className="relative inline-flex shrink-0" title={name} style={{ width: size, height: size }}>
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={name}
-          className="w-full h-full rounded-full object-cover"
-          style={{ border: `2px solid ${ring}` }} />
-      ) : (
-        <span className="w-full h-full rounded-full flex items-center justify-center font-semibold text-[var(--c-bg)]"
-          style={{ background: color || 'var(--c-text)', border: `2px solid ${ring}`, fontSize: Math.round(size * 0.36) }}>
-          {initials}
-        </span>
-      )}
-      {presence && (
-        <span className="absolute bottom-0 right-0 rounded-full"
-          title={presence}
-          style={{ width: dot, height: dot, background: PRESENCE_COLOR[presence], border: `2px solid ${ring}` }} />
-      )}
-    </span>
-  );
-}
 
 /* ── Semantic status pill colors ── */
 function statusStyle(status: string): { color: string; bg: string } {
@@ -934,7 +896,7 @@ export default function EspaciosPage() {
         </div>
 
         {/* ── Right: detail (desktop) ── */}
-        <aside className="hidden md:flex flex-1 min-w-0">
+        <aside className="hidden md:flex flex-1 min-w-0 min-h-0">
           {loading ? (
             <div className="flex-1 p-6 flex flex-col gap-4">
               <Skeleton className="h-20 w-full rounded-2xl" />
@@ -953,7 +915,7 @@ export default function EspaciosPage() {
               <p className="text-sm">Selecciona un espacio para ver sus proyectos</p>
             </div>
           ) : (
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 min-h-0 h-full">
               <WorkspaceDetail
                 key={selectedId ?? 'none'}
                 ws={selectedWs}

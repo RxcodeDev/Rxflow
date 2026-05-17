@@ -291,6 +291,7 @@ model WikiPage {
 
   parent   WikiPage?  @relation("WikiPageHierarchy", fields: [parent_page_id], references: [id], onDelete: SetNull)
   children WikiPage[] @relation("WikiPageHierarchy")
+  versions WikiPageVersion[]
 
   @@unique([workspace_id, slug])
   @@index([workspace_id])
@@ -298,4 +299,22 @@ model WikiPage {
   @@index([epic_id])
   @@index([task_id])
   @@map("wiki_pages")
+}
+
+// Point-in-time snapshot of a wiki page for history / rollback.
+// Coalesced per editing session (see WikiService.update).
+model WikiPageVersion {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  page_id      String   @db.Uuid
+  workspace_id String   @db.Uuid
+  title        String   @db.VarChar(500)
+  content      Json
+  icon         String?  @db.VarChar(10)
+  created_by   String   @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  page WikiPage @relation(fields: [page_id], references: [id], onDelete: Cascade)
+
+  @@index([page_id, created_at])
+  @@map("wiki_page_versions")
 }

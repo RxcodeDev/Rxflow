@@ -147,7 +147,7 @@ export default function WikiPageCard({ page, subPages = [], onDeleted }: WikiPag
               onClick={(e) => e.stopPropagation()}
             >
               <Link
-                href={`/herramientas/wiki/${page.id}/editar`}
+                href={`/herramientas/wiki/${page.id}`}
                 onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }}
                 className="flex items-center gap-2 px-3 py-2 text-[13px] text-[var(--c-text)] hover:bg-[var(--c-hover)] transition-colors"
               >
@@ -155,7 +155,7 @@ export default function WikiPageCard({ page, subPages = [], onDeleted }: WikiPag
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
-                Editar
+                Abrir y editar
               </Link>
               <button
                 type="button"
